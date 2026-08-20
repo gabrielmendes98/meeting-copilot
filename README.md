@@ -1,6 +1,6 @@
 # Meeting Copilot
 
-A macOS menu-bar app: press a hotkey to capture **system audio** (Zoom/Meet/Teams), transcribe it in **English**, and send the text to a local Cursor agent (Composer 2.5 Fast). A floating overlay shows a short reply you can read and say in the meeting.
+A macOS menu-bar app: press a hotkey to capture **system audio** (Zoom/Meet/Teams), transcribe it in **English**, and send the text to a local Cursor agent (Composer 2.5 Fast). A floating overlay shows a short reply you can read and say in the meeting. A second hotkey captures a **screen region** and asks the same agent about the screenshot.
 
 The Cursor IDE does **not** need to be open.
 
@@ -62,12 +62,23 @@ npm start
 
 The shortcut is configurable in `.env` (`HOTKEY=Alt+Space`). In Electron, Option on Mac is `Alt`.
 
+## Screenshot questions
+
+1. `Option+Shift+Space` opens the macOS region selector (same gesture as Cmd+Shift+4). Esc cancels.
+2. After you capture an area, the overlay shows **Thinking**, then the reply.
+3. Multiple choice: the option plus a short justification. Open questions: 2–4 short sentences, in the language of the screenshot.
+4. The reply is copied to the clipboard so you can paste with Cmd+V.
+
+The shortcut is configurable in `.env` (`SCREENSHOT_HOTKEY=Alt+Shift+Space`). It is ignored while audio is recording or the agent is already busy.
+
+Screen Recording permission is the same one used for system audio.
+
 ## How it works
 
 1. A Swift helper (`audio-capture`) uses ScreenCaptureKit (`capturesAudio`, `excludesCurrentProcessAudio`) and writes a temporary WAV.
 2. The WAV is transcribed in English: SpeechAnalyzer on the Mac, OpenAI, or Groq.
-3. The clip goes to a warmed-up Cursor agent. A `preToolUse` hook (in `agent-home/`, not the repo root) denies tools.
-4. The WAV is deleted after transcription.
+3. Audio clips and screenshots go to a warmed-up Cursor agent. A `preToolUse` hook (in `agent-home/`, not the repo root) denies tools.
+4. The WAV and screenshot PNG are deleted afterwards.
 
 Typical time after the second keypress (20–40s clip): about 4–8s on cloud STT; SpeechAnalyzer is usually similar or faster after the model is installed.
 

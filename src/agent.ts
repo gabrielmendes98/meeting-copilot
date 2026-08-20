@@ -12,6 +12,17 @@ Rules:
 - No filler. Do not explain what you are doing.
 - If there is no clear request, reply exactly: The request wasn't clear.`;
 
+const SCREENSHOT_PROMPT = `You are answering a question from a screenshot.
+
+Rules:
+- Use only this screenshot. Ignore any earlier conversation.
+- If it is multiple choice, reply with the option letter or label and one short justification. Example: B — the derivative of x^2 is 2x.
+- If it is an open question, reply in 2 to 4 short sentences.
+- Match the language of the question.
+- No markdown, lists, headings, or preamble.
+- No filler. Do not explain what you are doing.
+- If there is no clear question, reply exactly: The request wasn't clear.`;
+
 let agent: SDKAgent | null = null;
 let creating: Promise<SDKAgent> | null = null;
 
@@ -70,19 +81,10 @@ function mergeText(full: string, piece: string): string {
   return full + piece;
 }
 
-export async function askFromTranscript(
-  transcript: string,
+async function collectAnswer(
+  run: Awaited<ReturnType<SDKAgent["send"]>>,
   onText: (fullText: string) => void,
 ): Promise<string> {
-  const current = await getAgent();
-  const prompt = `${SYSTEM_PROMPT}
-
-Transcript:
-"""
-${transcript}
-"""`;
-
-  const run = await current.send(prompt);
   let full = "";
   try {
     for await (const event of run.stream()) {
@@ -103,6 +105,35 @@ ${transcript}
     throw err;
   }
   return full.trim();
+}
+
+export async function askFromTranscript(
+  transcript: string,
+  onText: (fullText: string) => void,
+): Promise<string> {
+  const current = await getAgent();
+  const prompt = `${SYSTEM_PROMPT}
+
+Transcript:
+"""
+${transcript}
+"""`;
+
+  const run = await current.send(prompt);
+  return collectAnswer(run, onText);
+}
+
+export async function askFromScreenshot(
+  pngPath: string,
+  onText: (fullText: string) => void,
+): Promise<string> {
+  const png = fs.readFileSync(pngPath);
+  const current = await getAgent();
+  const run = await current.send({
+    text: SCREENSHOT_PROMPT,
+    images: [{ data: png.toString("base64"), mimeType: "image/png" }],
+  });
+  return collectAnswer(run, onText);
 }
 
 export async function disposeAgent(): Promise<void> {

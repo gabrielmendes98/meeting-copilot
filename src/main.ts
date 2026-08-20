@@ -2,6 +2,7 @@ import fs from "node:fs";
 import {
   app,
   BrowserWindow,
+  clipboard,
   globalShortcut,
   ipcMain,
   Menu,
@@ -11,8 +12,14 @@ import {
   Tray,
 } from "electron";
 import { SystemAudioCapture } from "./capture";
-import { askFromTranscript, disposeAgent, warmAgent } from "./agent";
-import { hotkey, loadEnv, missingKeys } from "./env";
+import {
+  askFromScreenshot,
+  askFromTranscript,
+  disposeAgent,
+  warmAgent,
+} from "./agent";
+import { hotkey, loadEnv, missingKeys, screenshotHotkey } from "./env";
+import { captureRegion } from "./screenshot";
 import { transcribeWav } from "./transcribe";
 import { assertWavHasAudio } from "./wav";
 import type { OverlayState, OverlayStatus } from "./types";
@@ -38,13 +45,19 @@ function sendState(status: OverlayStatus, text = ""): void {
   setTrayRecording(status === "recording");
 }
 
+function displayHotkey(accelerator: string): string {
+  return accelerator.replaceAll("Alt+", "Option+");
+}
+
+function idleTooltip(): string {
+  return `Meeting Copilot — ${displayHotkey(hotkey())} to record · ${displayHotkey(screenshotHotkey())} to screenshot`;
+}
+
 function setTrayRecording(recording: boolean): void {
   if (!tray) return;
   tray.setTitle(recording ? "●" : "");
   tray.setToolTip(
-    recording
-      ? "Meeting Copilot — recording"
-      : "Meeting Copilot — Option+Space to record",
+    recording ? "Meeting Copilot — recording" : idleTooltip(),
   );
 }
 
@@ -115,11 +128,15 @@ function createOverlay(): BrowserWindow {
 
 function createTray(): Tray {
   const next = new Tray(loadTrayIcon());
-  next.setToolTip("Meeting Copilot — Option+Space to record");
+  next.setToolTip(idleTooltip());
   next.setContextMenu(
     Menu.buildFromTemplate([
       { label: "Meeting Copilot", enabled: false },
-      { label: `Shortcut: ${hotkey().replace("Alt+", "Option+")}`, enabled: false },
+      { label: `Record: ${displayHotkey(hotkey())}`, enabled: false },
+      {
+        label: `Screenshot: ${displayHotkey(screenshotHotkey())}`,
+        enabled: false,
+      },
       { type: "separator" },
       {
         label: "Quit",
@@ -151,7 +168,10 @@ async function toggleCapture(): Promise<void> {
     }
     try {
       await capture.start();
-      sendState("recording", "Recording system audio. Option+Space to stop.");
+      sendState(
+        "recording",
+        `Recording system audio. ${displayHotkey(hotkey())} to stop.`,
+      );
     } catch (err) {
       sendState("error", err instanceof Error ? err.message : String(err));
     }
@@ -184,17 +204,59 @@ async function toggleCapture(): Promise<void> {
   }
 }
 
-function registerHotkey(): void {
-  const accelerator = hotkey();
-  const ok = globalShortcut.register(accelerator, () => {
-    void toggleCapture();
-  });
+async function toggleScreenshot(): Promise<void> {
+  if (busy || capture.active) return;
+
+  if (!process.env.CURSOR_API_KEY?.trim()) {
+    sendState("error", "Set these in .env: CURSOR_API_KEY. See .env.example.");
+    return;
+  }
+
+  hideOverlay();
+  busy = true;
+  let pngPath: string | null = null;
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    pngPath = await captureRegion();
+    if (!pngPath) return;
+    sendState("thinking", "Reading the screenshot…");
+    const answer = await askFromScreenshot(pngPath, (full) => {
+      sendState("answer", full);
+    });
+    const text = answer || "The request wasn't clear.";
+    sendState("answer", text);
+    clipboard.writeText(text);
+  } catch (err) {
+    sendState("error", err instanceof Error ? err.message : String(err));
+  } finally {
+    if (pngPath) {
+      try {
+        fs.unlinkSync(pngPath);
+      } catch {
+        // ignore
+      }
+    }
+    busy = false;
+  }
+}
+
+function registerHotkey(accelerator: string, handler: () => void): void {
+  const ok = globalShortcut.register(accelerator, handler);
   if (!ok) {
     sendState(
       "error",
       `Could not register hotkey ${accelerator}. Close any app using the same shortcut.`,
     );
   }
+}
+
+function registerHotkeys(): void {
+  registerHotkey(hotkey(), () => {
+    void toggleCapture();
+  });
+  registerHotkey(screenshotHotkey(), () => {
+    void toggleScreenshot();
+  });
 }
 
 const gotLock = app.requestSingleInstanceLock();
@@ -218,7 +280,7 @@ if (!gotLock) {
         resizeOverlay(height);
       }
     });
-    registerHotkey();
+    registerHotkeys();
     if (missingKeys().length === 0) {
       try {
         await warmAgent();

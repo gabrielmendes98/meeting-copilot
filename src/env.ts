@@ -20,6 +20,10 @@ export function hotkey(): string {
   return process.env.HOTKEY?.trim() || "Alt+Space";
 }
 
+export function screenshotHotkey(): string {
+  return process.env.SCREENSHOT_HOTKEY?.trim() || "Alt+Shift+Space";
+}
+
 export function missingKeys(): string[] {
   const missing: string[] = [];
   if (!process.env.CURSOR_API_KEY?.trim()) missing.push("CURSOR_API_KEY");
