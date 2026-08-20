@@ -1,0 +1,90 @@
+:root {
+  color-scheme: dark;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  background: transparent;
+  overflow: hidden;
+  height: 100%;
+}
+
+.card {
+  margin: 8px 12px;
+  padding: 16px 18px 18px;
+  min-height: 88px;
+  max-height: calc(100vh - 16px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  background: rgba(18, 18, 22, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(18px);
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+}
+
+.card.hidden {
+  display: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.pill {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: #d7d7de;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.card[data-status="recording"] .pill {
+  color: #ffd7d7;
+  background: rgba(220, 50, 50, 0.28);
+}
+
+.card[data-status="transcribing"] .pill,
+.card[data-status="thinking"] .pill {
+  color: #d7e8ff;
+  background: rgba(70, 120, 255, 0.28);
+}
+
+.card[data-status="error"] .pill {
+  color: #ffe0c2;
+  background: rgba(200, 110, 20, 0.3);
+}
+
+.hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.text {
+  font-size: 20px;
+  line-height: 1.4;
+  color: #f4f4f7;
+  font-weight: 500;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}

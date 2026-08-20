@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self'; script-src 'self'"
+    />
+    <title>Meeting Copilot</title>
+    <link rel="stylesheet" href="overlay.css" />
+  </head>
+  <body>
+    <div id="card" class="card hidden" data-status="hidden">
+      <div class="row">
+        <span id="pill" class="pill">Ready</span>
+        <span class="hint">Esc or click to dismiss</span>
+      </div>
+      <p id="text" class="text"></p>
+    </div>
+    <script src="overlay.js"></script>
+  </body>
+</html>

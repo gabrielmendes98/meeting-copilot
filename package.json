@@ -1,0 +1,65 @@
+{
+  "name": "meeting-copilot",
+  "version": "0.1.0",
+  "description": "Meeting copilot: hotkey captures system audio, transcribes it, and answers via Cursor.",
+  "main": "dist/main.js",
+  "private": true,
+  "scripts": {
+    "copy:static": "mkdir -p dist/overlay dist/bin && cp src/overlay/index.html src/overlay/overlay.css src/overlay/overlay.js dist/overlay/",
+    "build:native:capture": "swiftc -parse-as-library -O -o dist/bin/audio-capture native/audio-capture/main.swift -framework Foundation -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework CoreAudio -framework CoreGraphics -framework CoreVideo -framework AudioToolbox -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker native/audio-capture/Info.plist",
+    "build:native:speech": "bash scripts/build-speech-app.sh",
+    "build:native": "mkdir -p dist/bin && npm run build:native:capture && npm run build:native:speech",
+    "build": "tsc && npm run copy:static && npm run build:native",
+    "start": "npm run build && electron .",
+    "dev": "tsc && npm run copy:static && electron ."
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "build": {
+    "appId": "dev.gabrielocc.meeting-copilot",
+    "productName": "Meeting Copilot",
+    "files": [
+      "dist/**/*",
+      "agent-home/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/bin/audio-capture",
+        "to": "audio-capture"
+      },
+      {
+        "from": "dist/bin/Meeting Copilot Speech.app",
+        "to": "Meeting Copilot Speech.app"
+      },
+      {
+        "from": "agent-home",
+        "to": "agent-home"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "extendInfo": {
+        "LSUIElement": true,
+        "NSScreenCaptureUsageDescription": "Meeting Copilot needs to capture system audio to transcribe meeting clips.",
+        "NSSpeechRecognitionUsageDescription": "Meeting Copilot uses macOS speech recognition to transcribe English meeting audio."
+      },
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "target": [
+        "dir"
+      ]
+    }
+  },
+  "dependencies": {
+    "@cursor/sdk": "^1.0.18",
+    "dotenv": "^17.4.2",
+    "electron": "^41.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^7.0.2"
+  }
+}
