@@ -116,10 +116,10 @@ function transcribeMacos(wavPath: string): Promise<string> {
       proc.kill("SIGTERM");
       reject(
         new TranscribeError(
-          "Timed out waiting for macOS Speech. If a permission dialog appeared, allow Meeting Copilot Speech.",
+          "Timed out waiting for SpeechAnalyzer. The first run may download an on-device English model; if a permission dialog appeared, allow Meeting Copilot Speech.",
         ),
       );
-    }, 120000);
+    }, 180000);
     proc.on("exit", (code) => {
       clearTimeout(timer);
       try {
@@ -141,7 +141,7 @@ function transcribeMacos(wavPath: string): Promise<string> {
         reject(
           new TranscribeError(
             json.error?.trim() ||
-              "macOS Speech failed. Allow Meeting Copilot Speech in System Settings → Privacy → Speech Recognition.",
+              "SpeechAnalyzer failed. Allow Meeting Copilot Speech in System Settings → Privacy → Speech Recognition.",
           ),
         );
       } catch {

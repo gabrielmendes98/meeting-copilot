@@ -9,6 +9,7 @@ swiftc -parse-as-library -O \
   -o "$app/Contents/MacOS/SpeechTranscribe" \
   "$root/native/speech-transcribe/main.swift" \
   -framework AppKit \
+  -framework AVFoundation \
   -framework Foundation \
   -framework Speech
 if command -v codesign >/dev/null 2>&1; then

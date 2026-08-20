@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import Speech
 
@@ -7,41 +8,25 @@ enum TranscribeError: LocalizedError {
     case denied
     case unavailable
     case empty
-    case convert
+    case assets
     case failed(String)
 
     var errorDescription: String? {
         switch self {
         case .usage:
-            return "Usage: SpeechTranscribe <file.wav> [output.txt]"
+            return "Usage: SpeechTranscribe <file.wav> [output.json]"
         case .denied:
             return "Speech Recognition was denied. In System Settings, allow Meeting Copilot Speech."
         case .unavailable:
-            return "English speech recognition is unavailable on this Mac."
+            return "SpeechAnalyzer English transcription is unavailable on this Mac. macOS 26+ is required."
         case .empty:
             return "Transcription came back empty."
-        case .convert:
-            return "Failed to convert audio to 16 kHz mono."
+        case .assets:
+            return "Could not download the on-device English speech model. Check the network and try again."
         case .failed(let message):
             return message
         }
     }
-}
-
-func convertTo16kMono(from input: URL) throws -> URL {
-    let output = input.deletingLastPathComponent()
-        .appendingPathComponent(input.deletingPathExtension().lastPathComponent + "-16k.wav")
-    try? FileManager.default.removeItem(at: output)
-
-    let proc = Process()
-    proc.executableURL = URL(fileURLWithPath: "/usr/bin/afconvert")
-    proc.arguments = ["-f", "WAVE", "-d", "LEI16@16000", "-c", "1", input.path, output.path]
-    try proc.run()
-    proc.waitUntilExit()
-    guard proc.terminationStatus == 0, FileManager.default.fileExists(atPath: output.path) else {
-        throw TranscribeError.convert
-    }
-    return output
 }
 
 func requestAuth() async -> SFSpeechRecognizerAuthorizationStatus {
@@ -56,66 +41,72 @@ func mappedSpeechError(_ error: Error) -> Error {
     let text = error.localizedDescription.lowercased()
     if text.contains("no speech") || text.contains("nenhuma fala") || text.contains("não foi detectada") {
         return TranscribeError.failed(
-            "macOS Speech found no speech in this clip (common with music or quiet audio). Record spoken audio or set STT_PROVIDER=groq / openai."
+            "SpeechAnalyzer found no speech in this clip. Record spoken audio or set STT_PROVIDER=groq / openai."
         )
     }
     return error
 }
 
-func recognize(url: URL, onDevice: Bool) async throws -> String {
-    guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-US")),
-          recognizer.isAvailable
-    else {
+@available(macOS 26, *)
+func transcribeWithAnalyzer(wav: URL) async throws -> String {
+    guard SpeechTranscriber.isAvailable else { throw TranscribeError.unavailable }
+
+    let requested = Locale(identifier: "en-US")
+    guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requested) else {
         throw TranscribeError.unavailable
     }
 
-    let request = SFSpeechURLRecognitionRequest(url: url)
-    request.shouldReportPartialResults = false
-    request.requiresOnDeviceRecognition = onDevice && recognizer.supportsOnDeviceRecognition
-
-    return try await withCheckedThrowingContinuation { cont in
-        var resumed = false
-        let finish: (Result<String, Error>) -> Void = { result in
-            guard !resumed else { return }
-            resumed = true
-            cont.resume(with: result)
+    let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+    do {
+        if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+            try await request.downloadAndInstall()
         }
-
-        _ = recognizer.recognitionTask(with: request) { result, error in
-            if let error {
-                finish(.failure(mappedSpeechError(error)))
-                return
-            }
-            guard let result, result.isFinal else { return }
-            let text = result.bestTranscription.formattedString
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            if text.isEmpty {
-                finish(.failure(TranscribeError.empty))
-            } else {
-                finish(.success(text))
-            }
-        }
+    } catch {
+        throw TranscribeError.assets
     }
+
+    let audioFile = try AVAudioFile(forReading: wav)
+    let analyzer = SpeechAnalyzer(modules: [transcriber])
+
+    let resultsTask = Task { () -> String in
+        var segments: [String] = []
+        for try await result in transcriber.results {
+            let piece = String(result.text.characters)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !piece.isEmpty else { continue }
+            if result.isFinal {
+                segments.append(piece)
+            }
+        }
+        return segments.joined(separator: " ")
+    }
+
+    do {
+        if let last = try await analyzer.analyzeSequence(from: audioFile) {
+            try await analyzer.finalizeAndFinish(through: last)
+        } else {
+            try await analyzer.finalizeAndFinishThroughEndOfInput()
+        }
+    } catch {
+        await analyzer.cancelAndFinishNow()
+        resultsTask.cancel()
+        throw mappedSpeechError(error)
+    }
+
+    let text = try await resultsTask.value
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    if text.isEmpty { throw TranscribeError.empty }
+    return text
 }
 
 func transcribe(wav: URL) async throws -> String {
     let status = await requestAuth()
     guard status == .authorized else { throw TranscribeError.denied }
 
-    let converted = try convertTo16kMono(from: wav)
-    defer { try? FileManager.default.removeItem(at: converted) }
-
-    let supportsOnDevice = SFSpeechRecognizer(locale: Locale(identifier: "en-US"))?
-        .supportsOnDeviceRecognition ?? false
-
-    if supportsOnDevice {
-        do {
-            return try await recognize(url: converted, onDevice: true)
-        } catch {
-            return try await recognize(url: converted, onDevice: false)
-        }
+    if #available(macOS 26, *) {
+        return try await transcribeWithAnalyzer(wav: wav)
     }
-    return try await recognize(url: converted, onDevice: false)
+    throw TranscribeError.unavailable
 }
 
 func writeResult(ok: Bool, text: String?, error: String?, to file: URL?) {

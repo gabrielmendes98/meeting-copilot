@@ -10,7 +10,7 @@ The Cursor IDE does **not** need to be open.
 - Node 20+
 - Xcode Command Line Tools (`xcode-select --install`) — needed to compile the Swift helpers
 - [CURSOR_API_KEY](https://cursor.com/dashboard/integrations)
-- Transcription: macOS Speech **or** [OpenAI](https://platform.openai.com/api-keys) **or** [Groq](https://console.groq.com/keys)
+- Transcription: SpeechAnalyzer on macOS 26+ **or** [OpenAI](https://platform.openai.com/api-keys) **or** [Groq](https://console.groq.com/keys)
 
 ## Setup
 
@@ -27,7 +27,7 @@ npm start
 
 | Value | Engine | Extra key |
 | --- | --- | --- |
-| `macos` | macOS Speech (`en-US`) | none |
+| `macos` | SpeechAnalyzer (`en-US`, on-device, macOS 26+) | none |
 | `openai` | `gpt-4o-mini-transcribe` | `OPENAI_API_KEY` |
 | `groq` | `whisper-large-v3-turbo` | `GROQ_API_KEY` |
 | `auto` | Groq → OpenAI → macOS | depends on fallback |
@@ -40,9 +40,11 @@ On the first capture, macOS asks for **Screen Recording**. With `macos`, it also
 2. System Settings → Privacy & Security → Speech Recognition
 3. Enable **Terminal** / **Electron** / **Meeting Copilot Speech** / **Meeting Copilot**
 
-Without Screen Recording, captured audio is silent. Without Speech Recognition, native Speech fails.
+Without Screen Recording, captured audio is silent. Without Speech Recognition, SpeechAnalyzer fails.
 
-To test with YouTube: keep the video **playing with volume**, on the main display, and record a clip that includes **speech** (not music only). macOS Speech ignores silence and often fails on music beds.
+The first `macos` run may download Apple’s on-device English model (needs network once). After that it stays local.
+
+To test with YouTube: keep the video **playing with volume**, on the main display, and record a clip that includes **speech** (not music only).
 
 On the first `macos` transcription, macOS should show a prompt for **Meeting Copilot Speech**. That is the app that appears under Speech Recognition (not Electron). If an earlier attempt failed silently and the list is still empty, reset the permission cache and try again:
 
@@ -63,11 +65,11 @@ The shortcut is configurable in `.env` (`HOTKEY=Alt+Space`). In Electron, Option
 ## How it works
 
 1. A Swift helper (`audio-capture`) uses ScreenCaptureKit (`capturesAudio`, `excludesCurrentProcessAudio`) and writes a temporary WAV.
-2. The WAV is transcribed in English: Mac Speech, OpenAI, or Groq.
+2. The WAV is transcribed in English: SpeechAnalyzer on the Mac, OpenAI, or Groq.
 3. The clip goes to a warmed-up Cursor agent. A `preToolUse` hook (in `agent-home/`, not the repo root) denies tools.
 4. The WAV is deleted after transcription.
 
-Typical time after the second keypress (20–40s clip): about 4–8s on cloud STT; Mac Speech can be similar or a bit slower.
+Typical time after the second keypress (20–40s clip): about 4–8s on cloud STT; SpeechAnalyzer is usually similar or faster after the model is installed.
 
 ## Limits
 
