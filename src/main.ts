@@ -6,6 +6,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  type NativeImage,
   screen,
   Tray,
 } from "electron";
@@ -39,12 +40,24 @@ function sendState(status: OverlayStatus, text = ""): void {
 
 function setTrayRecording(recording: boolean): void {
   if (!tray) return;
-  tray.setTitle(recording ? "● MC" : "MC");
+  tray.setTitle(recording ? "●" : "");
   tray.setToolTip(
     recording
       ? "Meeting Copilot — recording"
       : "Meeting Copilot — Option+Space to record",
   );
+}
+
+function loadTrayIcon(): NativeImage {
+  const png = `${__dirname}/assets/trayTemplate@2x.png`;
+  if (!fs.existsSync(png)) {
+    return nativeImage.createEmpty();
+  }
+  const image = nativeImage.createFromBuffer(fs.readFileSync(png), {
+    scaleFactor: 2,
+  });
+  image.setTemplateImage(true);
+  return image;
 }
 
 const OVERLAY_WIDTH = 840;
@@ -101,9 +114,7 @@ function createOverlay(): BrowserWindow {
 }
 
 function createTray(): Tray {
-  const icon = nativeImage.createEmpty();
-  const next = new Tray(icon);
-  next.setTitle("MC");
+  const next = new Tray(loadTrayIcon());
   next.setToolTip("Meeting Copilot — Option+Space to record");
   next.setContextMenu(
     Menu.buildFromTemplate([

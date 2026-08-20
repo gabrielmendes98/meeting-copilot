@@ -5,10 +5,11 @@
   "main": "dist/main.js",
   "private": true,
   "scripts": {
-    "copy:static": "mkdir -p dist/overlay dist/bin && cp src/overlay/index.html src/overlay/overlay.css src/overlay/overlay.js dist/overlay/",
+    "copy:static": "mkdir -p dist/overlay dist/bin dist/assets && cp src/overlay/index.html src/overlay/overlay.css src/overlay/overlay.js dist/overlay/ && cp src/assets/trayTemplate*.png dist/assets/",
     "build:native:capture": "swiftc -parse-as-library -O -o dist/bin/audio-capture native/audio-capture/main.swift -framework Foundation -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework CoreAudio -framework CoreGraphics -framework CoreVideo -framework AudioToolbox -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker native/audio-capture/Info.plist",
     "build:native:speech": "bash scripts/build-speech-app.sh",
     "build:native": "mkdir -p dist/bin && npm run build:native:capture && npm run build:native:speech",
+    "icons": "swift scripts/generate-icons.swift",
     "build": "tsc && npm run copy:static && npm run build:native",
     "start": "npm run build && electron .",
     "dev": "tsc && npm run copy:static && electron ."
@@ -39,6 +40,7 @@
       }
     ],
     "mac": {
+      "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
       "extendInfo": {
         "LSUIElement": true,

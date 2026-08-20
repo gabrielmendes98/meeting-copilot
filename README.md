@@ -55,7 +55,7 @@ npm start
 
 ## Using it in a meeting
 
-1. The app shows in the menu bar as **MC**.
+1. The app shows a waveform icon in the menu bar.
 2. `Option+Space` starts recording system audio. The overlay shows **Recording**.
 3. `Option+Space` again stops, transcribes, and asks the agent for a spoken English reply.
 4. Read the overlay and speak. Esc or click dismisses it.
