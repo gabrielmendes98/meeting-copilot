@@ -55,10 +55,14 @@ npm start
 
 ## Using it in a meeting
 
+With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
+
 1. The app shows a waveform icon in the menu bar.
-2. `Option+Space` starts recording system audio. The overlay shows **Recording**.
-3. `Option+Space` again stops, transcribes, and asks the agent for a spoken English reply.
-4. Read the overlay and speak. Esc or click dismisses it.
+2. `Option+Space` starts **continuous** listening. The overlay shows **Recording**. Esc hides the overlay; listening keeps going (a ● stays in the menu bar).
+3. `Option+Space` again does **not** stop. It checkpoints: transcribes the latest audio and asks the agent for a spoken English reply to the last question, using the whole call as context.
+4. **Stop listening** in the menu-bar menu ends the session (or Quit).
+
+With `openai` / `groq`, the original toggle still applies: `Option+Space` starts, `Option+Space` again stops, transcribes that clip, and answers.
 
 The shortcut is configurable in `.env` (`HOTKEY=Alt+Space`). In Electron, Option on Mac is `Alt`.
 
@@ -69,18 +73,18 @@ The shortcut is configurable in `.env` (`HOTKEY=Alt+Space`). In Electron, Option
 3. Multiple choice: the option plus a short justification. Open questions: 2–4 short sentences, in the language of the screenshot.
 4. The reply is copied to the clipboard so you can paste with Cmd+V.
 
-The shortcut is configurable in `.env` (`SCREENSHOT_HOTKEY=Alt+Shift+Space`). It is ignored while audio is recording or the agent is already busy.
+The shortcut is configurable in `.env` (`SCREENSHOT_HOTKEY=Alt+Shift+Space`). It is ignored while the agent is busy (checkpoint or screenshot in flight). You can still screenshot while macos listening is active.
 
 Screen Recording permission is the same one used for system audio.
 
 ## How it works
 
-1. A Swift helper (`audio-capture`) uses ScreenCaptureKit (`capturesAudio`, `excludesCurrentProcessAudio`) and writes a temporary WAV.
-2. The WAV is transcribed in English: SpeechAnalyzer on the Mac, OpenAI, or Groq.
-3. Audio clips and screenshots go to a warmed-up Cursor agent. A `preToolUse` hook (in `agent-home/`, not the repo root) denies tools.
-4. The WAV and screenshot PNG are deleted afterwards.
+1. A Swift helper (`audio-capture`) uses ScreenCaptureKit (`capturesAudio`, `excludesCurrentProcessAudio`). With `macos` it writes rotating WAV chunks; with cloud STT it writes one file until you stop.
+2. English transcription: SpeechAnalyzer on the Mac (`--watch` process for live macos), or OpenAI / Groq for a finished clip.
+3. Audio transcripts and screenshots go to a warmed-up Cursor agent. A `preToolUse` hook (in `agent-home/`, not the repo root) denies tools.
+4. Temporary WAV chunks and screenshot PNGs are deleted afterwards.
 
-Typical time after the second keypress (20–40s clip): about 4–8s on cloud STT; SpeechAnalyzer is usually similar or faster after the model is installed.
+Typical time after a macos checkpoint: a few seconds for the flushed tail plus the agent. Cloud STT after the second keypress (20–40s clip): about 4–8s.
 
 ## Limits
 

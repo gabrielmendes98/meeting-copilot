@@ -14,7 +14,7 @@ export type SttProvider = "openai" | "groq" | "macos";
 
 const LANGUAGE = "en";
 
-function pickProvider(): SttProvider {
+export function pickProvider(): SttProvider {
   const explicit = (process.env.STT_PROVIDER || "auto").trim().toLowerCase();
   if (explicit === "macos" || explicit === "speech" || explicit === "local") {
     return "macos";

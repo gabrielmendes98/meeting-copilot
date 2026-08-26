@@ -7,6 +7,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  type MenuItemConstructorOptions,
   type NativeImage,
   screen,
   Tray,
@@ -19,8 +20,9 @@ import {
   warmAgent,
 } from "./agent";
 import { hotkey, loadEnv, missingKeys, screenshotHotkey } from "./env";
+import { MacosLiveSession } from "./live-session";
 import { captureRegion } from "./screenshot";
-import { transcribeWav } from "./transcribe";
+import { pickProvider, transcribeWav } from "./transcribe";
 import { assertWavHasAudio } from "./wav";
 import type { OverlayState, OverlayStatus } from "./types";
 
@@ -28,9 +30,14 @@ let overlay: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let busy = false;
 const capture = new SystemAudioCapture();
+const liveSession = new MacosLiveSession();
 
 function overlayPath(): string {
   return `${__dirname}/overlay/index.html`;
+}
+
+function listeningActive(): boolean {
+  return liveSession.active || capture.active;
 }
 
 function sendState(status: OverlayStatus, text = ""): void {
@@ -38,11 +45,11 @@ function sendState(status: OverlayStatus, text = ""): void {
   overlay?.webContents.send("overlay-state", state);
   if (status === "hidden") {
     overlay?.hide();
-    setTrayRecording(false);
+    setTrayRecording(listeningActive());
     return;
   }
   overlay?.showInactive();
-  setTrayRecording(status === "recording");
+  setTrayRecording(listeningActive() || status === "recording");
 }
 
 function displayHotkey(accelerator: string): string {
@@ -57,8 +64,17 @@ function setTrayRecording(recording: boolean): void {
   if (!tray) return;
   tray.setTitle(recording ? "●" : "");
   tray.setToolTip(
-    recording ? "Meeting Copilot — recording" : idleTooltip(),
+    recording
+      ? liveSession.active
+        ? "Meeting Copilot — listening"
+        : "Meeting Copilot — recording"
+      : idleTooltip(),
   );
+}
+
+function refreshTray(): void {
+  tray?.setContextMenu(Menu.buildFromTemplate(trayTemplate()));
+  setTrayRecording(listeningActive());
 }
 
 function loadTrayIcon(): NativeImage {
@@ -126,26 +142,36 @@ function createOverlay(): BrowserWindow {
   return win;
 }
 
+function trayTemplate(): MenuItemConstructorOptions[] {
+  return [
+    { label: "Meeting Copilot", enabled: false },
+    { label: `Record: ${displayHotkey(hotkey())}`, enabled: false },
+    {
+      label: `Screenshot: ${displayHotkey(screenshotHotkey())}`,
+      enabled: false,
+    },
+    { type: "separator" },
+    {
+      label: "Stop listening",
+      enabled: liveSession.active,
+      click: () => {
+        void stopListening();
+      },
+    },
+    { type: "separator" },
+    {
+      label: "Quit",
+      click: () => {
+        app.quit();
+      },
+    },
+  ];
+}
+
 function createTray(): Tray {
   const next = new Tray(loadTrayIcon());
   next.setToolTip(idleTooltip());
-  next.setContextMenu(
-    Menu.buildFromTemplate([
-      { label: "Meeting Copilot", enabled: false },
-      { label: `Record: ${displayHotkey(hotkey())}`, enabled: false },
-      {
-        label: `Screenshot: ${displayHotkey(screenshotHotkey())}`,
-        enabled: false,
-      },
-      { type: "separator" },
-      {
-        label: "Quit",
-        click: () => {
-          app.quit();
-        },
-      },
-    ]),
-  );
+  next.setContextMenu(Menu.buildFromTemplate(trayTemplate()));
   tray = next;
   return next;
 }
@@ -154,7 +180,67 @@ function hideOverlay(): void {
   sendState("hidden");
 }
 
+async function stopListening(): Promise<void> {
+  await liveSession.stop();
+  refreshTray();
+  hideOverlay();
+}
+
+async function toggleMacosLive(): Promise<void> {
+  if (busy) return;
+
+  if (!liveSession.active) {
+    const missing = missingKeys();
+    if (missing.length > 0) {
+      sendState(
+        "error",
+        `Set these in .env: ${missing.join(", ")}. See .env.example.`,
+      );
+      return;
+    }
+    sendState(
+      "recording",
+      `Listening… ${displayHotkey(hotkey())} to answer. Stop from the menu.`,
+    );
+    busy = true;
+    try {
+      await liveSession.start();
+      refreshTray();
+    } catch (err) {
+      refreshTray();
+      sendState("error", err instanceof Error ? err.message : String(err));
+    } finally {
+      busy = false;
+    }
+    return;
+  }
+
+  busy = true;
+  try {
+    sendState("transcribing", "Transcribing…");
+    const transcript = await liveSession.flushAndTranscript();
+    sendState("thinking", "Thinking…");
+    const answer = await askFromTranscript(
+      transcript,
+      (full) => {
+        sendState("answer", full);
+      },
+      { mode: "checkpoint" },
+    );
+    sendState("answer", answer || "The request wasn't clear.");
+  } catch (err) {
+    sendState("error", err instanceof Error ? err.message : String(err));
+  } finally {
+    busy = false;
+  }
+}
+
 async function toggleCapture(): Promise<void> {
+  if (pickProvider() === "macos") {
+    await toggleMacosLive();
+    return;
+  }
+
   if (busy) return;
 
   if (!capture.active) {
@@ -205,7 +291,7 @@ async function toggleCapture(): Promise<void> {
 }
 
 async function toggleScreenshot(): Promise<void> {
-  if (busy || capture.active) return;
+  if (busy) return;
 
   if (!process.env.CURSOR_API_KEY?.trim()) {
     sendState("error", "Set these in .env: CURSOR_API_KEY. See .env.example.");
@@ -274,6 +360,10 @@ if (!gotLock) {
     }
     overlay = createOverlay();
     createTray();
+    liveSession.onUnexpectedExit = (err) => {
+      refreshTray();
+      sendState("error", err.message);
+    };
     ipcMain.on("overlay-dismiss", hideOverlay);
     ipcMain.on("overlay-height", (_event, height: number) => {
       if (typeof height === "number" && Number.isFinite(height)) {
@@ -293,6 +383,7 @@ if (!gotLock) {
   app.on("will-quit", () => {
     globalShortcut.unregisterAll();
     capture.kill();
+    void liveSession.stop();
     void disposeAgent();
   });
 }

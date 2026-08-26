@@ -14,13 +14,18 @@ enum CaptureError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .usage:
-            return "Usage: audio-capture <file.wav>"
+            return "Usage: audio-capture <file.wav>\n       audio-capture --rotate <dir>"
         case .noDisplay:
             return "No display found to capture audio from."
         case .noAudio:
             return "No system audio reached the capture. Allow Screen Recording, keep the video/call playing, and use the main display."
         }
     }
+}
+
+func writeStdout(_ line: String) {
+    FileHandle.standardOutput.write(Data((line + "\n").utf8))
+    fflush(stdout)
 }
 
 final class StopGate: @unchecked Sendable {
@@ -52,24 +57,15 @@ final class StopGate: @unchecked Sendable {
 }
 
 final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
-    private let outputURL: URL
     private var stream: SCStream?
     private var fileHandle: FileHandle?
+    private var currentURL: URL?
     private var dataSize: UInt32 = 0
     private let lock = NSLock()
     private let sampleRate: Int = 48_000
     private let channels: Int = 2
 
-    init(outputURL: URL) {
-        self.outputURL = outputURL
-        super.init()
-    }
-
-    var capturedBytes: UInt32 {
-        snapshotSize()
-    }
-
-    func start() async throws {
+    func startCapture() async throws {
         if !CGPreflightScreenCaptureAccess() {
             _ = CGRequestScreenCaptureAccess()
         }
@@ -93,11 +89,6 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
         config.showsCursor = false
         config.queueDepth = 8
 
-        FileManager.default.createFile(atPath: outputURL.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: outputURL)
-        fileHandle = handle
-        handle.write(Self.wavHeader(dataSize: 0, sampleRate: sampleRate, channels: channels))
-
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         let videoQueue = DispatchQueue(label: "meeting.copilot.video")
         let audioQueue = DispatchQueue(label: "meeting.copilot.audio")
@@ -107,20 +98,39 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
         self.stream = stream
     }
 
-    func stop() async {
+    func beginFile(_ url: URL) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: url)
+        fileHandle = handle
+        currentURL = url
+        dataSize = 0
+        handle.write(Self.wavHeader(dataSize: 0, sampleRate: sampleRate, channels: channels))
+    }
+
+    func endFile() -> (url: URL, bytes: UInt32)? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let url = currentURL, let handle = fileHandle else { return nil }
+        let bytes = dataSize
+        do {
+            try handle.seek(toOffset: 0)
+            handle.write(Self.wavHeader(dataSize: bytes, sampleRate: sampleRate, channels: channels))
+        } catch {
+            fputs("wav header: \(error.localizedDescription)\n", stderr)
+        }
+        try? handle.close()
+        fileHandle = nil
+        currentURL = nil
+        dataSize = 0
+        return (url, bytes)
+    }
+
+    func stopCapture() async {
         try? await stream?.stopCapture()
         stream = nil
         try? await Task.sleep(nanoseconds: 200_000_000)
-        let size = snapshotSize()
-        rewriteHeader(dataSize: size)
-        try? fileHandle?.close()
-        fileHandle = nil
-    }
-
-    private func snapshotSize() -> UInt32 {
-        lock.lock()
-        defer { lock.unlock() }
-        return dataSize
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -135,17 +145,6 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         fputs("capture error: \(error.localizedDescription)\n", stderr)
-    }
-
-    private func rewriteHeader(dataSize: UInt32) {
-        guard let handle = fileHandle else { return }
-        do {
-            try handle.seek(toOffset: 0)
-            handle.write(Self.wavHeader(dataSize: dataSize, sampleRate: sampleRate, channels: channels))
-            try handle.seekToEnd()
-        } catch {
-            fputs("wav header: \(error.localizedDescription)\n", stderr)
-        }
     }
 
     private static func wavHeader(dataSize: UInt32, sampleRate: Int, channels: Int) -> Data {
@@ -254,53 +253,178 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 }
 
+final class RotateWriter: @unchecked Sendable {
+    private let session: CaptureSession
+    private let dir: URL
+    private let queue = DispatchQueue(label: "meeting.copilot.rotate")
+    private var index = 0
+    private var timer: DispatchSourceTimer?
+    private var totalBytes: UInt32 = 0
+    private let interval: TimeInterval = 15
+
+    init(session: CaptureSession, dir: URL) {
+        self.session = session
+        self.dir = dir
+    }
+
+    func openFirst() throws {
+        try queue.sync {
+            try openNewLocked()
+            scheduleTimerLocked()
+        }
+    }
+
+    func flush() {
+        queue.sync {
+            rotateLocked(emitted: "FLUSHED")
+            scheduleTimerLocked()
+        }
+    }
+
+    func closeLast() -> UInt32 {
+        queue.sync {
+            timer?.cancel()
+            timer = nil
+            if let ended = session.endFile() {
+                totalBytes &+= ended.bytes
+                writeStdout("CHUNK \(ended.url.path)")
+            }
+            return totalBytes
+        }
+    }
+
+    private func rotateLocked(emitted: String) {
+        if let ended = session.endFile() {
+            totalBytes &+= ended.bytes
+            writeStdout("\(emitted) \(ended.url.path)")
+        }
+        try? openNewLocked()
+    }
+
+    private func openNewLocked() throws {
+        index += 1
+        let name = String(format: "%04d.wav", index)
+        let url = dir.appendingPathComponent(name)
+        try session.beginFile(url)
+    }
+
+    private func scheduleTimerLocked() {
+        timer?.cancel()
+        let next = DispatchSource.makeTimerSource(queue: queue)
+        next.schedule(deadline: .now() + interval)
+        next.setEventHandler { [weak self] in
+            guard let self else { return }
+            self.rotateLocked(emitted: "CHUNK")
+            self.scheduleTimerLocked()
+        }
+        next.resume()
+        timer = next
+    }
+}
+
+func installStopSignals(_ gate: StopGate) -> (DispatchSourceSignal, DispatchSourceSignal) {
+    signal(SIGINT, SIG_IGN)
+    signal(SIGTERM, SIG_IGN)
+    let sigint = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
+    let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
+    sigint.setEventHandler { gate.signal() }
+    sigterm.setEventHandler { gate.signal() }
+    sigint.resume()
+    sigterm.resume()
+    return (sigint, sigterm)
+}
+
+func readStdin(flush: (() -> Void)?, stop: @escaping () -> Void) {
+    DispatchQueue.global().async {
+        while let line = readLine() {
+            switch line.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+            case "STOP":
+                stop()
+                return
+            case "FLUSH":
+                flush?()
+            default:
+                break
+            }
+        }
+        stop()
+    }
+}
+
 @main
 struct AudioCaptureApp {
     static func main() async {
         let args = CommandLine.arguments
-        guard args.count == 2 else {
-            fputs("Usage: audio-capture <file.wav>\n", stderr)
+        if args.count == 3, args[1] == "--rotate" {
+            await runRotate(dir: URL(fileURLWithPath: args[2]))
+            return
+        }
+        guard args.count == 2, args[1] != "--rotate" else {
+            fputs("\(CaptureError.usage.localizedDescription)\n", stderr)
             exit(1)
         }
+        await runSingle(url: URL(fileURLWithPath: args[1]))
+    }
 
-        let url = URL(fileURLWithPath: args[1])
-        let session = CaptureSession(outputURL: url)
+    static func runSingle(url: URL) async {
+        let session = CaptureSession()
         let gate = StopGate()
-
-        signal(SIGINT, SIG_IGN)
-        signal(SIGTERM, SIG_IGN)
-        let sigint = DispatchSource.makeSignalSource(signal: SIGINT, queue: .global())
-        let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .global())
-        sigint.setEventHandler { gate.signal() }
-        sigterm.setEventHandler { gate.signal() }
-        sigint.resume()
-        sigterm.resume()
-
-        DispatchQueue.global().async {
-            while let line = readLine() {
-                if line.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() == "STOP" {
-                    gate.signal()
-                    break
-                }
-            }
-        }
+        let signals = installStopSignals(gate)
+        _ = signals
+        readStdin(flush: nil, stop: { gate.signal() })
 
         do {
-            try await session.start()
+            try await session.startCapture()
+            try session.beginFile(url)
         } catch {
             fputs("\(error.localizedDescription)\n", stderr)
             exit(2)
         }
 
-        FileHandle.standardOutput.write(Data("RECORDING\n".utf8))
-
+        writeStdout("RECORDING")
         await gate.wait()
-        await session.stop()
-        if session.capturedBytes == 0 {
+        await session.stopCapture()
+        let ended = session.endFile()
+        if (ended?.bytes ?? 0) == 0 {
             fputs("\(CaptureError.noAudio.localizedDescription)\n", stderr)
             exit(3)
         }
-        FileHandle.standardOutput.write(Data("DONE\n".utf8))
+        writeStdout("DONE")
+        exit(0)
+    }
+
+    static func runRotate(dir: URL) async {
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            fputs("\(error.localizedDescription)\n", stderr)
+            exit(2)
+        }
+
+        let session = CaptureSession()
+        let rotator = RotateWriter(session: session, dir: dir)
+        let gate = StopGate()
+        let signals = installStopSignals(gate)
+        _ = signals
+        readStdin(flush: { rotator.flush() }, stop: { gate.signal() })
+
+        do {
+            try await session.startCapture()
+            try rotator.openFirst()
+        } catch {
+            fputs("\(error.localizedDescription)\n", stderr)
+            exit(2)
+        }
+
+        writeStdout("RECORDING")
+        await gate.wait()
+        await session.stopCapture()
+        let total = rotator.closeLast()
+        if total == 0 {
+            fputs("\(CaptureError.noAudio.localizedDescription)\n", stderr)
+            exit(3)
+        }
+        writeStdout("DONE")
         exit(0)
     }
 }

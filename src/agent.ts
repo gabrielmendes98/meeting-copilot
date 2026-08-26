@@ -12,6 +12,17 @@ Rules:
 - No filler. Do not explain what you are doing.
 - If there is no clear request, reply exactly: The request wasn't clear.`;
 
+const CHECKPOINT_PROMPT = `You are a meeting copilot. The transcript below is everything said so far in a call in English.
+
+Mentally summarize the call so far. Do not include that summary in your reply.
+Reply with ONLY the answer to the latest question or request aimed at the person who will answer.
+
+Rules:
+- Reply in English, in 2 to 4 short spoken sentences.
+- No markdown, lists, headings, or preamble.
+- No filler. Do not explain what you are doing.
+- If there is no clear request, reply exactly: The request wasn't clear.`;
+
 const SCREENSHOT_PROMPT = `You are answering a question from a screenshot.
 
 Rules:
@@ -107,12 +118,17 @@ async function collectAnswer(
   return full.trim();
 }
 
+export type TranscriptMode = "clip" | "checkpoint";
+
 export async function askFromTranscript(
   transcript: string,
   onText: (fullText: string) => void,
+  options?: { mode?: TranscriptMode },
 ): Promise<string> {
   const current = await getAgent();
-  const prompt = `${SYSTEM_PROMPT}
+  const system =
+    options?.mode === "checkpoint" ? CHECKPOINT_PROMPT : SYSTEM_PROMPT;
+  const prompt = `${system}
 
 Transcript:
 """

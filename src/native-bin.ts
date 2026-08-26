@@ -24,3 +24,13 @@ export function speechAppPath(): string {
     "Speech app not found. Run npm run build in the project.",
   );
 }
+
+export function speechBinaryPath(): string {
+  const bin = path.join(speechAppPath(), "Contents/MacOS/SpeechTranscribe");
+  if (!fs.existsSync(bin)) {
+    throw new Error(
+      "Speech helper binary not found. Run npm run build in the project.",
+    );
+  }
+  return bin;
+}

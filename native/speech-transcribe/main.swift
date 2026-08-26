@@ -14,7 +14,7 @@ enum TranscribeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .usage:
-            return "Usage: SpeechTranscribe <file.wav> [output.json]"
+            return "Usage: SpeechTranscribe --watch | <file.wav> [output.json]"
         case .denied:
             return "Speech Recognition was denied. In System Settings, allow Meeting Copilot Speech."
         case .unavailable:
@@ -48,7 +48,7 @@ func mappedSpeechError(_ error: Error) -> Error {
 }
 
 @available(macOS 26, *)
-func transcribeWithAnalyzer(wav: URL) async throws -> String {
+func transcribeWithAnalyzer(wav: URL, allowEmpty: Bool = false) async throws -> String {
     guard SpeechTranscriber.isAvailable else { throw TranscribeError.unavailable }
 
     let requested = Locale(identifier: "en-US")
@@ -95,8 +95,28 @@ func transcribeWithAnalyzer(wav: URL) async throws -> String {
 
     let text = try await resultsTask.value
         .trimmingCharacters(in: .whitespacesAndNewlines)
-    if text.isEmpty { throw TranscribeError.empty }
+    if text.isEmpty {
+        if allowEmpty { return "" }
+        throw TranscribeError.empty
+    }
     return text
+}
+
+@available(macOS 26, *)
+func prepareSpeechAssets() async throws {
+    guard SpeechTranscriber.isAvailable else { throw TranscribeError.unavailable }
+    let requested = Locale(identifier: "en-US")
+    guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requested) else {
+        throw TranscribeError.unavailable
+    }
+    let transcriber = SpeechTranscriber(locale: locale, preset: .transcription)
+    do {
+        if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+            try await request.downloadAndInstall()
+        }
+    } catch {
+        throw TranscribeError.assets
+    }
 }
 
 func transcribe(wav: URL) async throws -> String {
@@ -107,6 +127,46 @@ func transcribe(wav: URL) async throws -> String {
         return try await transcribeWithAnalyzer(wav: wav)
     }
     throw TranscribeError.unavailable
+}
+
+func writeStdout(_ line: String) {
+    FileHandle.standardOutput.write(Data((line + "\n").utf8))
+    fflush(stdout)
+}
+
+func writeJsonLine(ok: Bool, text: String, error: String) {
+    let payload: [String: Any] = ["ok": ok, "text": text, "error": error]
+    guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return }
+    FileHandle.standardOutput.write(data)
+    FileHandle.standardOutput.write(Data("\n".utf8))
+    fflush(stdout)
+}
+
+func isSoftSpeechFailure(_ error: Error) -> Bool {
+    if let typed = error as? TranscribeError {
+        switch typed {
+        case .empty:
+            return true
+        case .failed(let message):
+            let text = message.lowercased()
+            return text.contains("no speech") || text.contains("nenhuma fala")
+        default:
+            return false
+        }
+    }
+    let text = error.localizedDescription.lowercased()
+    return text.contains("no speech") || text.contains("nenhuma fala") || text.contains("não foi detectada")
+}
+
+func stdinLines() -> AsyncStream<String> {
+    AsyncStream { continuation in
+        DispatchQueue.global().async {
+            while let line = readLine() {
+                continuation.yield(line)
+            }
+            continuation.finish()
+        }
+    }
 }
 
 func writeResult(ok: Bool, text: String?, error: String?, to file: URL?) {
@@ -150,19 +210,88 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+final class WatchDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor in
+            let status = await requestAuth()
+            guard status == .authorized else {
+                writeJsonLine(ok: false, text: "", error: TranscribeError.denied.localizedDescription)
+                NSApp.terminate(nil)
+                return
+            }
+
+            if #available(macOS 26, *) {
+                do {
+                    try await prepareSpeechAssets()
+                } catch {
+                    writeJsonLine(ok: false, text: "", error: error.localizedDescription)
+                    NSApp.terminate(nil)
+                    return
+                }
+                writeStdout("READY")
+                for await line in stdinLines() {
+                    let path = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if path.isEmpty { continue }
+                    if path.uppercased() == "STOP" { break }
+                    await transcribeWatchChunk(wav: URL(fileURLWithPath: path))
+                }
+                NSApp.terminate(nil)
+                return
+            }
+
+            writeJsonLine(ok: false, text: "", error: TranscribeError.unavailable.localizedDescription)
+            NSApp.terminate(nil)
+        }
+    }
+}
+
+@available(macOS 26, *)
+func transcribeWatchChunk(wav: URL) async {
+    do {
+        let text = try await transcribeWithAnalyzer(wav: wav, allowEmpty: true)
+        writeJsonLine(ok: true, text: text, error: "")
+    } catch {
+        let mapped = mappedSpeechError(error)
+        if isSoftSpeechFailure(mapped) {
+            writeJsonLine(ok: true, text: "", error: "")
+            return
+        }
+        if let typed = mapped as? TranscribeError {
+            switch typed {
+            case .denied, .unavailable, .assets:
+                writeJsonLine(ok: false, text: "", error: typed.localizedDescription)
+                await NSApp.terminate(nil)
+                return
+            default:
+                break
+            }
+        }
+        writeJsonLine(ok: true, text: "", error: "")
+    }
+}
+
 @main
 struct SpeechTranscribeMain {
     static func main() {
         let args = CommandLine.arguments
         guard args.count >= 2 else {
-            fputs("Usage: SpeechTranscribe <file.wav> [output.json]\n", stderr)
+            fputs("Usage: SpeechTranscribe --watch | <file.wav> [output.json]\n", stderr)
             exit(1)
+        }
+
+        let app = NSApplication.shared
+
+        if args[1] == "--watch" {
+            app.setActivationPolicy(.accessory)
+            let delegate = WatchDelegate()
+            app.delegate = delegate
+            app.run()
+            exit(0)
         }
 
         let wav = URL(fileURLWithPath: args[1])
         let outFile = args.count >= 3 ? URL(fileURLWithPath: args[2]) : nil
 
-        let app = NSApplication.shared
         app.setActivationPolicy(.regular)
         let delegate = AppDelegate(wav: wav, outFile: outFile)
         app.delegate = delegate
