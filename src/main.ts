@@ -17,9 +17,20 @@ import {
   askFromScreenshot,
   askFromTranscript,
   disposeAgent,
+  emptyReply,
+  overlayLabel,
   warmAgent,
+  type TranscriptMode,
 } from "./agent";
-import { hotkey, loadEnv, missingKeys, screenshotHotkey } from "./env";
+import {
+  briefingHotkey,
+  checkpointHotkey,
+  hotkey,
+  loadEnv,
+  missingKeys,
+  screenshotHotkey,
+  summaryHotkey,
+} from "./env";
 import { MacosLiveSession } from "./live-session";
 import { captureRegion } from "./screenshot";
 import { pickProvider, transcribeWav } from "./transcribe";
@@ -40,8 +51,8 @@ function listeningActive(): boolean {
   return liveSession.active || capture.active;
 }
 
-function sendState(status: OverlayStatus, text = ""): void {
-  const state: OverlayState = { status, text };
+function sendState(status: OverlayStatus, text = "", label?: string): void {
+  const state: OverlayState = { status, text, label };
   overlay?.webContents.send("overlay-state", state);
   if (status === "hidden") {
     overlay?.hide();
@@ -57,7 +68,11 @@ function displayHotkey(accelerator: string): string {
 }
 
 function idleTooltip(): string {
-  return `Meeting Copilot — ${displayHotkey(hotkey())} to record · ${displayHotkey(screenshotHotkey())} to screenshot`;
+  return `Meeting Copilot — ${displayHotkey(hotkey())} record · ${displayHotkey(checkpointHotkey())} answer · ${displayHotkey(screenshotHotkey())} screenshot`;
+}
+
+function listeningHint(): string {
+  return `${displayHotkey(hotkey())} stops · ${displayHotkey(checkpointHotkey())} answer · ${displayHotkey(summaryHotkey())} summary · ${displayHotkey(briefingHotkey())} notes`;
 }
 
 function setTrayRecording(recording: boolean): void {
@@ -146,6 +161,9 @@ function trayTemplate(): MenuItemConstructorOptions[] {
   return [
     { label: "Meeting Copilot", enabled: false },
     { label: `Record: ${displayHotkey(hotkey())}`, enabled: false },
+    { label: `Answer: ${displayHotkey(checkpointHotkey())}`, enabled: false },
+    { label: `Summary: ${displayHotkey(summaryHotkey())}`, enabled: false },
+    { label: `Notes: ${displayHotkey(briefingHotkey())}`, enabled: false },
     {
       label: `Screenshot: ${displayHotkey(screenshotHotkey())}`,
       enabled: false,
@@ -186,6 +204,26 @@ async function stopListening(): Promise<void> {
   hideOverlay();
 }
 
+async function askAndShow(
+  transcript: string,
+  mode: TranscriptMode,
+): Promise<void> {
+  const label = overlayLabel(mode);
+  if (!transcript.trim()) {
+    sendState("answer", emptyReply(mode), label);
+    return;
+  }
+  sendState("thinking", "Thinking…");
+  const answer = await askFromTranscript(
+    transcript,
+    (full) => {
+      sendState("answer", full, label);
+    },
+    { mode },
+  );
+  sendState("answer", answer || emptyReply(mode), label);
+}
+
 async function toggleMacosLive(): Promise<void> {
   if (busy) return;
 
@@ -198,10 +236,7 @@ async function toggleMacosLive(): Promise<void> {
       );
       return;
     }
-    sendState(
-      "recording",
-      `Listening… ${displayHotkey(hotkey())} to answer. Stop from the menu.`,
-    );
+    sendState("recording", `Listening… ${listeningHint()}.`);
     busy = true;
     try {
       await liveSession.start();
@@ -215,24 +250,70 @@ async function toggleMacosLive(): Promise<void> {
     return;
   }
 
+  await stopListening();
+}
+
+async function runMacosAction(mode: TranscriptMode): Promise<void> {
+  if (busy) return;
+  if (!liveSession.active) {
+    sendState(
+      "error",
+      `Start listening with ${displayHotkey(hotkey())} first.`,
+    );
+    return;
+  }
+
   busy = true;
   try {
     sendState("transcribing", "Transcribing…");
     const transcript = await liveSession.flushAndTranscript();
-    sendState("thinking", "Thinking…");
-    const answer = await askFromTranscript(
-      transcript,
-      (full) => {
-        sendState("answer", full);
-      },
-      { mode: "checkpoint" },
-    );
-    sendState("answer", answer || "The request wasn't clear.");
+    await askAndShow(transcript, mode);
   } catch (err) {
     sendState("error", err instanceof Error ? err.message : String(err));
   } finally {
     busy = false;
   }
+}
+
+async function runClipAction(mode: TranscriptMode): Promise<void> {
+  if (busy) return;
+  if (!capture.active) {
+    sendState(
+      "error",
+      `Start recording with ${displayHotkey(hotkey())} first.`,
+    );
+    return;
+  }
+
+  busy = true;
+  let wavPath: string | null = null;
+  try {
+    sendState("transcribing", "Transcribing…");
+    wavPath = await capture.stop();
+    refreshTray();
+    assertWavHasAudio(wavPath);
+    const transcript = await transcribeWav(wavPath);
+    await askAndShow(transcript, mode === "checkpoint" ? "clip" : mode);
+  } catch (err) {
+    sendState("error", err instanceof Error ? err.message : String(err));
+  } finally {
+    if (wavPath) {
+      try {
+        fs.unlinkSync(wavPath);
+      } catch {
+        // ignore
+      }
+    }
+    busy = false;
+  }
+}
+
+function runTranscriptAction(mode: TranscriptMode): void {
+  if (pickProvider() === "macos") {
+    void runMacosAction(mode);
+    return;
+  }
+  void runClipAction(mode);
 }
 
 async function toggleCapture(): Promise<void> {
@@ -254,39 +335,25 @@ async function toggleCapture(): Promise<void> {
     }
     try {
       await capture.start();
-      sendState(
-        "recording",
-        `Recording system audio. ${displayHotkey(hotkey())} to stop.`,
-      );
+      sendState("recording", `Recording… ${listeningHint()}.`);
     } catch (err) {
       sendState("error", err instanceof Error ? err.message : String(err));
     }
     return;
   }
 
-  busy = true;
-  let wavPath: string | null = null;
   try {
-    sendState("transcribing", "Transcribing…");
-    wavPath = await capture.stop();
-    assertWavHasAudio(wavPath);
-    const transcript = await transcribeWav(wavPath);
-    sendState("thinking", "Thinking…");
-    const answer = await askFromTranscript(transcript, (full) => {
-      sendState("answer", full);
-    });
-    sendState("answer", answer || "The request wasn't clear.");
-  } catch (err) {
-    sendState("error", err instanceof Error ? err.message : String(err));
-  } finally {
-    if (wavPath) {
-      try {
-        fs.unlinkSync(wavPath);
-      } catch {
-        // ignore
-      }
+    const wavPath = await capture.stop();
+    refreshTray();
+    hideOverlay();
+    try {
+      fs.unlinkSync(wavPath);
+    } catch {
+      // ignore
     }
-    busy = false;
+  } catch (err) {
+    refreshTray();
+    sendState("error", err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -339,6 +406,15 @@ function registerHotkey(accelerator: string, handler: () => void): void {
 function registerHotkeys(): void {
   registerHotkey(hotkey(), () => {
     void toggleCapture();
+  });
+  registerHotkey(checkpointHotkey(), () => {
+    runTranscriptAction("checkpoint");
+  });
+  registerHotkey(summaryHotkey(), () => {
+    runTranscriptAction("summary");
+  });
+  registerHotkey(briefingHotkey(), () => {
+    runTranscriptAction("briefing");
   });
   registerHotkey(screenshotHotkey(), () => {
     void toggleScreenshot();

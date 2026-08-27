@@ -59,12 +59,22 @@ With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
 
 1. The app shows a waveform icon in the menu bar.
 2. `Option+Space` starts **continuous** listening. The overlay shows **Recording**. Esc hides the overlay; listening keeps going (a ● stays in the menu bar).
-3. `Option+Space` again does **not** stop. It checkpoints: transcribes the latest audio and asks the agent for a spoken English reply to the last question, using the whole call as context.
-4. **Stop listening** in the menu-bar menu ends the session (or Quit).
+3. While listening:
+   - `Option+1` checkpoints: transcribes the latest audio and asks for a spoken English reply to the last question, using the whole call as context.
+   - `Option+2` summarizes what has been said so far.
+   - `Option+3` summarizes and adds concerns and useful questions.
+4. `Option+Space` again **stops** listening (or use **Stop listening** in the menu-bar menu / Quit).
 
-With `openai` / `groq`, the original toggle still applies: `Option+Space` starts, `Option+Space` again stops, transcribes that clip, and answers.
+With `openai` / `groq`: `Option+Space` starts and stops a clip. `Option+1` / `Option+2` / `Option+3` stop the clip, transcribe it, and run the matching action.
 
-The shortcut is configurable in `.env` (`HOTKEY=Alt+Space`). In Electron, Option on Mac is `Alt`.
+Shortcuts are configurable in `.env`. In Electron, Option on Mac is `Alt`.
+
+| Action | Default |
+| --- | --- |
+| Start / stop listening | `HOTKEY=Alt+Space` |
+| Answer last question | `CHECKPOINT_HOTKEY=Alt+1` |
+| Summary | `SUMMARY_HOTKEY=Alt+2` |
+| Summary + notes | `BRIEFING_HOTKEY=Alt+3` |
 
 ## Screenshot questions
 
@@ -73,7 +83,7 @@ The shortcut is configurable in `.env` (`HOTKEY=Alt+Space`). In Electron, Option
 3. Multiple choice: the option plus a short justification. Open questions: 2–4 short sentences, in the language of the screenshot.
 4. The reply is copied to the clipboard so you can paste with Cmd+V.
 
-The shortcut is configurable in `.env` (`SCREENSHOT_HOTKEY=Alt+Shift+Space`). It is ignored while the agent is busy (checkpoint or screenshot in flight). You can still screenshot while macos listening is active.
+The shortcut is configurable in `.env` (`SCREENSHOT_HOTKEY=Alt+Shift+Space`). It is ignored while the agent is busy (an action or screenshot in flight). You can still screenshot while macos listening is active.
 
 Screen Recording permission is the same one used for system audio.
 
@@ -84,7 +94,7 @@ Screen Recording permission is the same one used for system audio.
 3. Audio transcripts and screenshots go to a warmed-up Cursor agent. A `preToolUse` hook (in `agent-home/`, not the repo root) denies tools.
 4. Temporary WAV chunks and screenshot PNGs are deleted afterwards.
 
-Typical time after a macos checkpoint: a few seconds for the flushed tail plus the agent. Cloud STT after the second keypress (20–40s clip): about 4–8s.
+Typical time after a macos action (`Option+1` / `2` / `3`): a few seconds for the flushed tail plus the agent. Cloud STT after `Option+1` / `2` / `3` on a 20–40s clip: about 4–8s.
 
 ## Limits
 

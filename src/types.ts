@@ -9,6 +9,7 @@ export type OverlayStatus =
 export type OverlayState = {
   status: OverlayStatus;
   text: string;
+  label?: string;
 };
 
 export type CopilotApi = {

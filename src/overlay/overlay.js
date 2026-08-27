@@ -32,7 +32,7 @@ function render(state) {
   }
   card.classList.remove("hidden");
   card.dataset.status = state.status;
-  pill.textContent = labels[state.status] || state.status;
+  pill.textContent = state.label || labels[state.status] || state.status;
   text.textContent = state.text || "";
   fitWindow();
 }

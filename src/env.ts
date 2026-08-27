@@ -24,6 +24,18 @@ export function screenshotHotkey(): string {
   return process.env.SCREENSHOT_HOTKEY?.trim() || "Alt+Shift+Space";
 }
 
+export function checkpointHotkey(): string {
+  return process.env.CHECKPOINT_HOTKEY?.trim() || "Alt+1";
+}
+
+export function summaryHotkey(): string {
+  return process.env.SUMMARY_HOTKEY?.trim() || "Alt+2";
+}
+
+export function briefingHotkey(): string {
+  return process.env.BRIEFING_HOTKEY?.trim() || "Alt+3";
+}
+
 export function missingKeys(): string[] {
   const missing: string[] = [];
   if (!process.env.CURSOR_API_KEY?.trim()) missing.push("CURSOR_API_KEY");
