@@ -1,0 +1,9 @@
+# Meeting Copilot icon
+
+`meeting-copilot-source.png` is the original transparent artwork, generated with the built-in ImageGen tool. Run `npm run icons` to create `build/icon.png`, the macOS `build/icon.icns`, and the menu-bar template assets. `npm run copy:static` copies the app icon into the shared Dock/sidebar runtime asset.
+
+The Dock and sidebar use the blue ribbon M. The menu bar retains its monochrome waveform for readability as a small macOS template icon.
+
+## Generation prompt
+
+Use case: logo-brand. Asset type: final macOS application icon for Meeting Copilot, also used at 34px in the application sidebar. Primary request: a completely new, beautifully designed blue brand icon for an intelligent meeting companion. One bold sculptural abstract mark: two interlocking folded ribbon wings forming an elegant compact M silhouette, representing two people in conversation and a copilot moving them forward. The mark should be distinctive, simple, instantly readable at small sizes, with generous negative space, smooth confident curves, and only a few broad planes. Pale ice-blue and white ribbon surfaces, with restrained dimensional shading, centered on a royal cobalt blue rounded-square macOS squircle tile. Color palette matches the app: vivid blue #5c85ff, cobalt #425db0, deep navy #1c2147, pale ice blue. Premium contemporary macOS aesthetic, clean satin finish, very subtle blue tonal gradient, understated depth, no glossy plastic, no excessive bevels. Composition: square image, one icon only, straight-on orthographic, centered tile with equal transparent margins of approximately 7% on all four sides, entire tile visible, no shadow outside tile. Text: none. Avoid: old waveform bars, microphones, headphones, generic chat bubbles, sparkles, robots, extra objects, mockup scenery, grids, labels, watermarks, green or purple hues. Background outside the blue tile MUST be genuinely transparent alpha.

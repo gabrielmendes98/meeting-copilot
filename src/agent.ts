@@ -59,7 +59,12 @@ Rules:
 - No filler. Do not explain what you are doing.
 - If there is no clear question, reply exactly: The request wasn't clear.`;
 
-const service = new AgentService(createAgentProvider);
+let service = new AgentService(createAgentProvider);
+
+export async function resetAgent(): Promise<void> {
+  await service.dispose();
+  service = new AgentService(createAgentProvider);
+}
 
 export async function warmAgent(): Promise<void> {
   await service.warm();

@@ -1,6 +1,7 @@
 #!/usr/bin/env swift
 import AppKit
 import Foundation
+import ImageIO
 
 let root = URL(fileURLWithPath: CommandLine.arguments[0])
   .resolvingSymlinksInPath()
@@ -32,83 +33,17 @@ func render(size: Int, draw: (CGContext, CGFloat) -> Void) -> Data {
   return rep.representation(using: .png, properties: [:])!
 }
 
-func squircle(in rect: CGRect) -> CGPath {
-  let path = CGMutablePath()
-  let r = rect.width * 0.223
-  path.addRoundedRect(in: rect, cornerWidth: r, cornerHeight: r)
-  return path
+// Keep the approved rebrand as the source for every macOS icon size.
+// ImageIO preserves its transparency; CGContext supplies high-quality downsampling.
+let iconSourceURL = root.appendingPathComponent("build/branding/meeting-copilot-source.png")
+guard let iconSource = CGImageSourceCreateWithURL(iconSourceURL as CFURL, nil),
+      let brandIcon = CGImageSourceCreateImageAtIndex(iconSource, 0, nil) else {
+  fputs("Missing or invalid brand source: \(iconSourceURL.path)\n", stderr)
+  exit(1)
 }
 
 func drawAppIcon(ctx: CGContext, size: CGFloat) {
-  let pad = size * 0.07
-  let board = CGRect(x: pad, y: pad, width: size - pad * 2, height: size - pad * 2)
-
-  ctx.saveGState()
-  ctx.addPath(squircle(in: board))
-  ctx.clip()
-
-  let gradient = CGGradient(
-    colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-    colors: [
-      srgb(0.36, 0.52, 1.00),
-      srgb(0.11, 0.13, 0.28),
-    ] as CFArray,
-    locations: [0, 1]
-  )!
-  ctx.drawLinearGradient(
-    gradient,
-    start: CGPoint(x: board.minX, y: board.maxY),
-    end: CGPoint(x: board.maxX, y: board.minY),
-    options: []
-  )
-
-  let shine = CGGradient(
-    colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-    colors: [
-      srgb(1, 1, 1, 0.18),
-      srgb(1, 1, 1, 0),
-    ] as CFArray,
-    locations: [0, 1]
-  )!
-  ctx.drawLinearGradient(
-    shine,
-    start: CGPoint(x: board.midX, y: board.maxY),
-    end: CGPoint(x: board.midX, y: board.midY),
-    options: []
-  )
-  ctx.restoreGState()
-
-  // Overlay-card bubble
-  let bubbleW = board.width * 0.56
-  let bubbleH = board.height * 0.46
-  let bubble = CGRect(
-    x: board.midX - bubbleW / 2,
-    y: board.midY - bubbleH / 2 + board.height * 0.04,
-    width: bubbleW,
-    height: bubbleH
-  )
-  let bubbleRadius = bubble.width * 0.22
-  ctx.setFillColor(srgb(1, 1, 1, 0.16))
-  ctx.addPath(CGPath(roundedRect: bubble, cornerWidth: bubbleRadius, cornerHeight: bubbleRadius, transform: nil))
-  ctx.fillPath()
-
-  // Small tail so it reads as a reply, not a window
-  let tailSize = bubble.width * 0.16
-  let tail = CGMutablePath()
-  let tx = bubble.minX + bubble.width * 0.22
-  tail.move(to: CGPoint(x: tx, y: bubble.minY + 1))
-  tail.addLine(to: CGPoint(x: tx + tailSize, y: bubble.minY + 1))
-  tail.addLine(to: CGPoint(x: tx + tailSize * 0.15, y: bubble.minY - tailSize * 0.72))
-  tail.closeSubpath()
-  ctx.addPath(tail)
-  ctx.setFillColor(srgb(1, 1, 1, 0.16))
-  ctx.fillPath()
-
-  drawWaveform(
-    ctx: ctx,
-    in: bubble.insetBy(dx: bubble.width * 0.22, dy: bubble.height * 0.22),
-    color: srgb(0.957, 0.957, 0.969)
-  )
+  ctx.draw(brandIcon, in: CGRect(x: 0, y: 0, width: size, height: size))
 }
 
 func drawWaveform(ctx: CGContext, in rect: CGRect, color: CGColor) {

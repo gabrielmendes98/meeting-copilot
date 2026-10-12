@@ -63,7 +63,7 @@ body {
 .card[data-status="transcribing"] .pill,
 .card[data-status="thinking"] .pill {
   color: #d7e8ff;
-  background: rgba(70, 120, 255, 0.28);
+  background: rgba(92, 133, 255, 0.28);
 }
 
 .card[data-status="error"] .pill {

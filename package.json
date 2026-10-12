@@ -6,7 +6,7 @@
   "private": true,
   "scripts": {
     "test": "tsc && node --test tests/*.test.cjs",
-    "copy:static": "mkdir -p dist/overlay dist/bin dist/assets && cp src/overlay/index.html src/overlay/overlay.css src/overlay/overlay.js dist/overlay/ && cp src/assets/trayTemplate*.png dist/assets/",
+    "copy:static": "mkdir -p dist/overlay dist/application dist/bin dist/assets && cp src/overlay/index.html src/overlay/overlay.css src/overlay/overlay.js dist/overlay/ && cp src/application/index.html src/application/app.css src/application/app.js dist/application/ && cp src/assets/trayTemplate*.png dist/assets/ && cp build/icon.png dist/assets/app.png",
     "build:native:capture": "swiftc -parse-as-library -O -o dist/bin/audio-capture native/audio-capture/main.swift -framework Foundation -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework CoreAudio -framework CoreGraphics -framework CoreVideo -framework AudioToolbox -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker native/audio-capture/Info.plist",
     "build:native:speech": "bash scripts/build-speech-app.sh",
     "build:native": "mkdir -p dist/bin && npm run build:native:capture && npm run build:native:speech",
@@ -44,7 +44,7 @@
       "icon": "build/icon.icns",
       "category": "public.app-category.productivity",
       "extendInfo": {
-        "LSUIElement": true,
+        "LSUIElement": false,
         "NSScreenCaptureUsageDescription": "Meeting Copilot needs to capture system audio to transcribe meeting clips.",
         "NSSpeechRecognitionUsageDescription": "Meeting Copilot uses macOS speech recognition to transcribe English meeting audio."
       },

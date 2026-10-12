@@ -1,6 +1,6 @@
 # Meeting Copilot
 
-A macOS menu-bar app: press a hotkey to capture **system audio** (Zoom/Meet/Teams), transcribe it in **English**, and send the text to a configurable AI provider (OpenAI by default). A floating overlay shows a short reply you can read and say in the meeting. A second hotkey captures a **screen region** and asks the same agent about the screenshot.
+A macOS application with a Dock window and menu-bar controls: press a hotkey to capture **system audio** (Zoom/Meet/Teams), transcribe it in **English**, and send the text to a configurable AI provider (OpenAI by default). A floating overlay shows a short reply you can read and say in the meeting. A second hotkey captures a **screen region** and asks the same agent about the screenshot.
 
 OpenAI and Cursor are supported. The Cursor IDE does **not** need to be open when using Cursor.
 
@@ -76,7 +76,11 @@ npm start
 
 With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
 
-1. The app shows a waveform icon in the menu bar.
+1. The app opens a full workspace window and appears in the Dock, alongside its waveform menu-bar icon. The **Meeting** page provides listening, answer, summary, notes, screenshot, and copy controls. Closing the workspace keeps the app and meeting session running; reopen it from the Dock or **Open Meeting Copilot** in the tray menu. Use **Quit** to stop the app.
+
+   **Settings** configures the AI provider, model, API keys, transcription provider, and shortcuts. Save while idle to apply changes immediately. Shortcut conflicts leave your previous settings intact. Keys are encrypted using Electron's macOS-backed `safeStorage`; the renderer receives only whether a key exists. Saved settings in the app's user-data directory override `.env` on subsequent launches. Leaving an API-key field blank preserves the existing key.
+
+   **Context library** accepts PDF, TXT, and Markdown file references and persists them between launches. It does not read, upload, or pass file contents to the agent yet. Removing a reference leaves the original file intact; moved files are marked as unavailable.
 2. `Option+Space` starts **continuous** listening. The overlay shows **Recording**. Esc hides the overlay; listening keeps going (a ● stays in the menu bar).
 3. While listening:
    - `Option+1` checkpoints: transcribes the latest audio and asks for a spoken English reply to the last question, using the whole call as context.
@@ -86,7 +90,7 @@ With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
 
 With `openai` / `groq`: `Option+Space` starts and stops a clip. `Option+1` / `Option+2` / `Option+3` stop the clip, transcribe it, and run the matching action.
 
-Shortcuts are configurable in `.env`. In Electron, Option on Mac is `Alt`.
+Shortcuts are configurable in **Settings** or initially in `.env`. In Electron, Option on Mac is `Alt`.
 
 | Action | Default |
 | --- | --- |

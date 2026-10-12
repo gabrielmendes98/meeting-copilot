@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'" />
+  <title>Meeting Copilot</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><img class="brand-icon" src="../assets/app.png" alt="" width="34" height="34" /><div>Meeting Copilot<small>Your meeting companion</small></div></div>
+    <nav aria-label="Main navigation">
+      <button class="nav-button active" data-page="meeting" aria-current="page"><span aria-hidden="true">◉</span> Meeting</button>
+      <button class="nav-button" data-page="context"><span aria-hidden="true">▤</span> Context library <span class="count" id="context-count">0</span></button>
+      <button class="nav-button" data-page="settings"><span aria-hidden="true">⚙</span> Settings</button>
+    </nav>
+    <div class="sidebar-footer"><span class="status-dot" id="sidebar-dot"></span><span id="sidebar-status">Ready when you are</span><small>Available from your menu bar, too.</small></div>
+  </aside>
+  <main>
+    <header class="titlebar"><span>YOUR WORKSPACE</span><span class="privacy-label">System audio · English</span></header>
+    <div id="notice" role="status" hidden></div>
+    <section id="page-meeting" class="page">
+      <div id="configuration-banner" class="banner" hidden><span id="configuration-message"></span><button data-open-settings>Open settings →</button></div>
+      <div class="session-card">
+        <div class="session-intro"><div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><h2 id="session-title">Ready for your next meeting</h2><p id="session-description">Capture the conversation from your meeting app.</p></div></div>
+        <button id="capture" class="primary" data-action="capture">Start listening <kbd id="record-shortcut">⌥ Space</kbd></button>
+      </div>
+      <div class="action-grid">
+        <button class="action-card" data-action="checkpoint"><span class="action-icon">↗</span><kbd id="answer-shortcut">⌥ 1</kbd><strong>Help me answer</strong><span>A clear reply to the latest question.</span></button>
+        <button class="action-card" data-action="summary"><span class="action-icon">≡</span><kbd id="summary-shortcut">⌥ 2</kbd><strong>Summarize so far</strong><span>Topics, decisions, and next steps.</span></button>
+        <button class="action-card" data-action="briefing"><span class="action-icon">✧</span><kbd id="notes-shortcut">⌥ 3</kbd><strong>Give me notes</strong><span>Concerns and useful questions.</span></button>
+      </div>
+      <article class="reply-card"><div class="card-heading"><h2 id="reply-heading">Your copilot’s response</h2><button id="copy-reply" class="text-button" disabled>Copy response</button></div><div id="reply" class="reply empty">Start listening, then ask your copilot for an answer or summary.<br>Your response will appear here and in the floating overlay.</div></article>
+      <div class="meeting-footer"><span>Something on your screen?</span><button class="text-button" data-action="screenshot">Ask from a screenshot <kbd id="screenshot-shortcut">⌥ ⇧ Space</kbd></button></div>
+    </section>
+    <section id="page-context" class="page" hidden>
+      <div class="context-actions"><button id="add-context" class="primary">＋ Add files</button></div>
+      <div class="banner context-banner"><span><strong>Preparing for what’s next</strong><br>Save references here now. File contents aren’t read or sent to your agent yet.</span><span class="badge">Coming soon</span></div>
+      <div id="context-empty" class="context-empty"><span class="document-symbol" aria-hidden="true">▤</span><h2>Give your copilot the bigger picture</h2><p>Keep project briefs, meeting notes, and reference documents together.<br>Support for PDF, plain text, and Markdown.</p><button id="add-context-empty" class="secondary">Choose files</button><small>Files stay in their original location. Only references are saved.</small></div>
+      <ul id="context-list" class="file-list" aria-label="Context files"></ul>
+    </section>
+    <section id="page-settings" class="page" hidden>
+      <div class="page-heading"><div><h1>Settings</h1><p class="subtitle">Choose how your copilot listens and thinks.</p></div></div>
+      <form id="settings-form">
+        <div class="settings-card"><div class="settings-heading"><h2>AI agent</h2><p>The service that generates your answers and meeting notes.</p></div>
+          <div class="form-grid"><label>Provider<select name="AGENT_PROVIDER"><option value="openai">OpenAI</option><option value="cursor">Cursor</option></select></label><label>Model<input name="AGENT_MODEL" required maxlength="200" spellcheck="false" /></label></div>
+          <label>API key<input name="AGENT_API_KEY" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter your agent API key" /><small id="agent-key-hint">Stored encrypted on this Mac.</small></label>
+        </div>
+        <div class="settings-card"><div class="settings-heading"><h2>Transcription</h2><p>macOS listens continuously. Cloud services transcribe recorded clips.</p></div>
+          <label>Speech provider<select name="STT_PROVIDER"><option value="macos">macOS · Local, continuous listening</option><option value="openai">OpenAI · Recorded clips</option><option value="groq">Groq · Recorded clips</option><option value="auto">Automatic · Based on available API key</option></select></label>
+          <label id="stt-key-field">Transcription API key<input name="STT_PROVIDER_API_KEY" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter your transcription API key" /><small id="stt-key-hint">Stored encrypted on this Mac.</small></label>
+        </div>
+        <div class="settings-card"><div class="settings-heading"><h2>Keyboard shortcuts</h2><p>Available even when your application window is closed. Use Alt for Option and Command for ⌘.</p></div>
+          <div class="shortcut-grid"><label>Start / stop listening<input name="HOTKEY" required /></label><label>Answer latest question<input name="CHECKPOINT_HOTKEY" required /></label><label>Summarize<input name="SUMMARY_HOTKEY" required /></label><label>Meeting notes<input name="BRIEFING_HOTKEY" required /></label><label>Screenshot<input name="SCREENSHOT_HOTKEY" required /></label></div>
+        </div>
+        <div class="save-bar"><span id="save-hint">Changes apply immediately after saving.</span><button type="submit" id="save-settings" class="primary">Save settings</button></div>
+      </form>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -20,6 +20,7 @@ import {
   emptyReply,
   overlayLabel,
   warmAgent,
+  resetAgent,
   type TranscriptMode,
 } from "./agent";
 import {
@@ -33,11 +34,18 @@ import {
   summaryHotkey,
 } from "./env";
 import { captureRegion } from "./screenshot";
-import { transcription, transcribeWav } from "./transcribe";
+import { transcription, transcribeWav, resetTranscription, pickProvider } from "./transcribe";
+import { loadSettings, publicSettings, saveSettings } from "./settings";
+import { validateSettings, shortcutKeys } from "./settings-config";
+import { addContextFiles, listContextFiles, removeContextFile } from "./context-files";
 import { assertWavHasAudio } from "./wav";
 import type { OverlayState, OverlayStatus } from "./types";
 
 let overlay: BrowserWindow | null = null;
+let mainWindow: BrowserWindow | null = null;
+let currentState: OverlayState = { status: "hidden", text: "" };
+let latestReply = "";
+let startupError = "";
 let tray: Tray | null = null;
 let busy = false;
 const capture = new SystemAudioCapture();
@@ -52,6 +60,9 @@ function listeningActive(): boolean {
 
 function sendState(status: OverlayStatus, text = "", label?: string): void {
   const state: OverlayState = { status, text, label };
+  currentState = state;
+  if (status === "answer") latestReply = text;
+  publishAppState();
   overlay?.webContents.send("overlay-state", state);
   if (status === "hidden") {
     overlay?.hide();
@@ -89,6 +100,92 @@ function setTrayRecording(recording: boolean): void {
 function refreshTray(): void {
   tray?.setContextMenu(Menu.buildFromTemplate(trayTemplate()));
   setTrayRecording(listeningActive());
+  publishAppState();
+}
+
+function appState() {
+  let configurationError = startupError;
+  let live = false;
+  try {
+    live = pickProvider() === "macos";
+    const missing = missingKeys();
+    if (missing.length) configurationError ||= "Add your API keys in Settings to get started.";
+  } catch (err) { configurationError = err instanceof Error ? err.message : String(err); }
+  return { overlay: currentState, latestReply, busy, listening: listeningActive(),
+    live, settings: publicSettings(), configurationError };
+}
+
+function setBusy(value: boolean): void {
+  busy = value;
+  publishAppState();
+}
+
+function publishAppState(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("app-state", appState());
+}
+
+function openApplication(): void {
+  if (!mainWindow) {
+    mainWindow = new BrowserWindow({
+      width: 1120, height: 780, minWidth: 900, minHeight: 650,
+      title: "Meeting Copilot", titleBarStyle: "hiddenInset", backgroundColor: "#f7f8fc",
+      webPreferences: { preload: `${__dirname}/application-preload.js`, contextIsolation: true, nodeIntegration: false, sandbox: true },
+    });
+    mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
+    void mainWindow.loadFile(`${__dirname}/application/index.html`);
+    mainWindow.on("closed", () => { mainWindow = null; });
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function registerApplicationIpc(): void {
+  function authorize(event: Electron.IpcMainInvokeEvent): void {
+    if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error("Unauthorized window.");
+  }
+  ipcMain.handle("app-state", (event) => { authorize(event); return appState(); });
+  ipcMain.handle("app-action", async (event, action: string) => {
+    authorize(event);
+    if (busy) return;
+    if (action === "capture") await toggleCapture();
+    else if (action === "screenshot") await toggleScreenshot();
+    else if (["checkpoint", "summary", "briefing"].includes(action)) runTranscriptAction(action as TranscriptMode);
+    else throw new Error("Unknown action.");
+    publishAppState();
+  });
+  ipcMain.handle("app-save-settings", async (event, input: unknown) => {
+    authorize(event);
+    if (busy || listeningActive()) throw new Error("Stop listening and wait for the current action before changing settings.");
+    const settings = validateSettings(input);
+    const previous = Object.fromEntries(shortcutKeys.map((key) => [key, process.env[key]]));
+    globalShortcut.unregisterAll();
+    try {
+      const handlers = [() => { void toggleCapture(); }, () => runTranscriptAction("checkpoint"), () => runTranscriptAction("summary"), () => runTranscriptAction("briefing"), () => { void toggleScreenshot(); }];
+      shortcutKeys.forEach((key, index) => {
+        if (!globalShortcut.register(settings[key], handlers[index])) throw new Error(`Cannot register ${settings[key]}. Choose a different shortcut.`);
+      });
+      saveSettings(settings);
+    } catch (err) {
+      globalShortcut.unregisterAll();
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      registerHotkeys();
+      throw err;
+    }
+    setBusy(true);
+    try {
+      await resetAgent();
+      await resetTranscription();
+      startupError = "";
+    } finally { setBusy(false); refreshTray(); }
+    return publicSettings();
+  });
+  ipcMain.handle("app-context-list", (event) => { authorize(event); return listContextFiles(); });
+  ipcMain.handle("app-context-add", async (event) => { authorize(event); return addContextFiles(mainWindow!); });
+  ipcMain.handle("app-context-remove", (event, id: string) => { authorize(event); if (typeof id !== "string") throw new Error("Invalid file."); return removeContextFile(id); });
 }
 
 function loadTrayIcon(): NativeImage {
@@ -158,7 +255,7 @@ function createOverlay(): BrowserWindow {
 
 function trayTemplate(): MenuItemConstructorOptions[] {
   return [
-    { label: "Meeting Copilot", enabled: false },
+    { label: "Open Meeting Copilot", click: openApplication },
     { label: `Record: ${displayHotkey(hotkey())}`, enabled: false },
     { label: `Answer: ${displayHotkey(checkpointHotkey())}`, enabled: false },
     { label: `Summary: ${displayHotkey(summaryHotkey())}`, enabled: false },
@@ -198,9 +295,15 @@ function hideOverlay(): void {
 }
 
 async function stopListening(): Promise<void> {
-  await transcription.stop();
-  refreshTray();
-  hideOverlay();
+  if (busy) return;
+  setBusy(true);
+  try {
+    await transcription.stop();
+    refreshTray();
+    hideOverlay();
+  } catch (err) {
+    sendState("error", err instanceof Error ? err.message : String(err));
+  } finally { setBusy(false); }
 }
 
 async function askAndShow(
@@ -228,7 +331,7 @@ async function toggleLiveListening(): Promise<void> {
 
   if (!transcription.active) {
     sendState("recording", `Listening… ${listeningHint()}.`);
-    busy = true;
+    setBusy(true);
     try {
       await transcription.start();
       refreshTray();
@@ -236,7 +339,7 @@ async function toggleLiveListening(): Promise<void> {
       refreshTray();
       sendState("error", err instanceof Error ? err.message : String(err));
     } finally {
-      busy = false;
+      setBusy(false);
     }
     return;
   }
@@ -254,7 +357,7 @@ async function runLiveAction(mode: TranscriptMode): Promise<void> {
     return;
   }
 
-  busy = true;
+  setBusy(true);
   try {
     sendState("transcribing", "Transcribing…");
     const transcript = await transcription.flushAndTranscript();
@@ -262,7 +365,7 @@ async function runLiveAction(mode: TranscriptMode): Promise<void> {
   } catch (err) {
     sendState("error", err instanceof Error ? err.message : String(err));
   } finally {
-    busy = false;
+    setBusy(false);
   }
 }
 
@@ -276,7 +379,7 @@ async function runClipAction(mode: TranscriptMode): Promise<void> {
     return;
   }
 
-  busy = true;
+  setBusy(true);
   let wavPath: string | null = null;
   try {
     sendState("transcribing", "Transcribing…");
@@ -295,7 +398,7 @@ async function runClipAction(mode: TranscriptMode): Promise<void> {
         // ignore
       }
     }
-    busy = false;
+    setBusy(false);
   }
 }
 
@@ -317,29 +420,22 @@ async function toggleCapture(): Promise<void> {
     return;
   }
 
-  if (!capture.active) {
-    try {
-      await capture.start();
-      sendState("recording", `Recording… ${listeningHint()}.`);
-    } catch (err) {
-      sendState("error", err instanceof Error ? err.message : String(err));
-    }
-    return;
-  }
-
+  setBusy(true);
   try {
-    const wavPath = await capture.stop();
-    refreshTray();
-    hideOverlay();
-    try {
-      fs.unlinkSync(wavPath);
-    } catch {
-      // ignore
+    if (!capture.active) {
+      await capture.start();
+      refreshTray();
+      sendState("recording", `Recording… ${listeningHint()}.`);
+    } else {
+      const wavPath = await capture.stop();
+      refreshTray();
+      hideOverlay();
+      try { fs.unlinkSync(wavPath); } catch { /* Already removed. */ }
     }
   } catch (err) {
     refreshTray();
     sendState("error", err instanceof Error ? err.message : String(err));
-  }
+  } finally { setBusy(false); }
 }
 
 async function toggleScreenshot(): Promise<void> {
@@ -348,11 +444,14 @@ async function toggleScreenshot(): Promise<void> {
   if (!checkConfiguration(true)) return;
 
   hideOverlay();
-  busy = true;
+  setBusy(true);
   let pngPath: string | null = null;
   try {
     await new Promise((resolve) => setTimeout(resolve, 80));
-    pngPath = await captureRegion();
+    const applicationWasVisible = mainWindow?.isVisible();
+    if (applicationWasVisible) mainWindow?.hide();
+    try { pngPath = await captureRegion(); }
+    finally { if (applicationWasVisible) mainWindow?.show(); }
     if (!pngPath) return;
     sendState("thinking", "Reading the screenshot…");
     const answer = await askFromScreenshot(pngPath, (full) => {
@@ -371,14 +470,14 @@ async function toggleScreenshot(): Promise<void> {
         // ignore
       }
     }
-    busy = false;
+    setBusy(false);
   }
 }
 
 function checkConfiguration(agentOnly = false): boolean {
   try {
     const missing = agentOnly ? missingAgentKeys() : missingKeys();
-    if (missing.length) throw new Error(`Set these in .env: ${missing.join(", ")}. See .env.example.`);
+    if (missing.length) throw new Error("Add your API keys in Meeting Copilot → Settings to get started.");
     return true;
   } catch (err) {
     sendState("error", err instanceof Error ? err.message : String(err));
@@ -414,20 +513,30 @@ function registerHotkeys(): void {
   });
 }
 
+app.setName("Meeting Copilot");
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    overlay?.showInactive();
+    openApplication();
   });
 
   app.whenReady().then(async () => {
     loadEnv();
+    try { loadSettings(); } catch { startupError = "Saved settings could not be loaded. Review and save your settings again."; }
     if (process.platform === "darwin") {
-      app.dock?.hide();
+      app.setActivationPolicy("regular");
+      await app.dock?.show();
+      app.dock?.setIcon(`${__dirname}/assets/app.png`);
     }
     overlay = createOverlay();
+    registerApplicationIpc();
+    Menu.setApplicationMenu(Menu.buildFromTemplate([
+      { label: "Meeting Copilot", submenu: [{ role: "about" }, { label: "Open Meeting Copilot", click: openApplication }, { type: "separator" }, { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, { type: "separator" }, { role: "quit" }] },
+      { role: "editMenu" }, { role: "windowMenu" },
+    ]));
+    openApplication();
     createTray();
     transcription.onUnexpectedExit = (err) => {
       refreshTray();
@@ -440,7 +549,7 @@ if (!gotLock) {
       }
     });
     registerHotkeys();
-    if (checkConfiguration(true)) {
+    if (!appState().configurationError) {
       try {
         await warmAgent();
       } catch (err) {
@@ -448,6 +557,9 @@ if (!gotLock) {
       }
     }
   });
+
+  app.on("activate", openApplication);
+  app.on("window-all-closed", () => { /* The tray and listening session remain available. */ });
 
   app.on("will-quit", () => {
     globalShortcut.unregisterAll();
