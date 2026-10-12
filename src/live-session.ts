@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { nativeBin, speechBinaryPath } from "./native-bin";
+import type { LiveTranscriptionSession } from "./transcription/types";
 
 export class LiveSessionError extends Error {
   constructor(message: string) {
@@ -35,7 +36,7 @@ type JsonWaiter = {
   reject: (err: Error) => void;
 };
 
-export class MacosLiveSession {
+export class MacosLiveSession implements LiveTranscriptionSession {
   private capture: ChildProcessWithoutNullStreams | null = null;
   private speech: ChildProcessWithoutNullStreams | null = null;
   private dir: string | null = null;

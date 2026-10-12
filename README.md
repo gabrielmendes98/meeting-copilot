@@ -34,7 +34,7 @@ npm start
 
 `AGENT_API_KEY` is the only agent credential setting. When switching providers, replace its value with a key issued by the selected service. New provider protocols can be added through adapters behind the shared interface.
 
-Replace the former agent setting (`OPENAI_API_KEY` or `CURSOR_API_KEY`) with `AGENT_API_KEY` in existing `.env` files. Cloud transcription still uses its own credentials (`OPENAI_API_KEY` or `GROQ_API_KEY`), allowing it to use a different service from the agent.
+Replace the former agent setting (`OPENAI_API_KEY` or `CURSOR_API_KEY`) with `AGENT_API_KEY` in existing `.env` files. Cloud transcription uses `STT_PROVIDER_API_KEY`, allowing it to use a different service from the agent. Move any former transcription key (`OPENAI_API_KEY` or `GROQ_API_KEY`) to `STT_PROVIDER_API_KEY` and select its service with `STT_PROVIDER`.
 
 The default OpenAI model accepts text and images and supports streaming ([official OpenAI documentation](https://developers.openai.com/api/docs/models/gpt-4.1-mini)). Agent credentials are checked for the selected provider only. `STT_PROVIDER` remains independent; selecting OpenAI for answers does not change the transcription setting.
 
@@ -43,11 +43,15 @@ The default OpenAI model accepts text and images and supports streaming ([offici
 | Value | Engine | Extra key |
 | --- | --- | --- |
 | `macos` | SpeechAnalyzer (`en-US`, on-device, macOS 26+) | none |
-| `openai` | `gpt-4o-mini-transcribe` | `OPENAI_API_KEY` |
-| `groq` | `whisper-large-v3-turbo` | `GROQ_API_KEY` |
-| `auto` | Groq → OpenAI → macOS | depends on fallback |
+| `openai` | `gpt-4o-mini-transcribe` | `STT_PROVIDER_API_KEY` (OpenAI key) |
+| `groq` | `whisper-large-v3-turbo` | `STT_PROVIDER_API_KEY` (Groq key) |
+| `auto` | OpenAI if the STT key is set, otherwise macOS | OpenAI key when set |
+
+`STT_PROVIDER_API_KEY` is the only transcription credential setting and is independent of `AGENT_API_KEY`. For example, use `AGENT_PROVIDER=cursor` with a Cursor `AGENT_API_KEY`, and `STT_PROVIDER=openai` with an OpenAI `STT_PROVIDER_API_KEY`. `auto` assumes an OpenAI key; choose `STT_PROVIDER=groq` explicitly for a Groq key. macOS transcription needs no API key.
 
 Transcription language is always **English**. No autodetect.
+
+Transcription configuration and credential validation share one resolver. `speech` and `local` remain aliases for `macos`. Unknown `STT_PROVIDER` values produce a configuration error instead of silently selecting another service. The existing transcription keys remain independent of `AGENT_API_KEY`.
 
 On the first capture, macOS asks for **Screen Recording**. With `macos`, it also asks for **Speech Recognition**:
 
@@ -124,7 +128,19 @@ The application uses the Strategy pattern with provider adapters and a factory:
 
 To add a provider with another protocol, implement `AgentProvider`, extend the configuration union and validation, and add a factory branch. Meeting prompts, hotkeys, and overlay code need no provider-specific changes. All request context belongs in `AgentRequest`; adapters must return trimmed answers and emit the full accumulated text.
 
-Run `npm test` for configuration, lifecycle, and mocked streaming tests. Run `npm run build` for TypeScript, static assets, and native macOS helpers. Tests do not make paid API calls.
+Transcription follows the same Strategy, Adapter, and Factory patterns:
+
+- `src/transcribe.ts` is the application facade backed by `TranscriptionService`.
+- `src/transcription/types.ts` defines `TranscriptionProvider` (transcribe, dispose) and the optional `LiveTranscriptionSession` capability.
+- `src/transcription/config.ts` resolves the selected provider, credentials, model, endpoint, and capture mode.
+- `src/transcription/index.ts` creates the selected adapter lazily.
+- `src/transcription/cloud.ts` implements the multipart protocol shared by OpenAI and Groq, with cancellation and a 60-second request timeout.
+- `src/transcription/macos.ts` handles clip transcription through the native helper and owns the live session implemented in `src/live-session.ts`.
+- `src/transcription/service.ts` owns adapter initialization, retries after creation failures, live-session operations, and disposal.
+
+The application chooses continuous listening or clip capture from the configured capability, without naming a transcription provider. To add another transcription protocol, implement `TranscriptionProvider`, extend the configuration and factory, and optionally implement `createLiveSession` for continuous listening. Clip transcripts must be returned as trimmed text. Disposal must cancel pending work and stop any live session.
+
+Run `npm test` for configuration, lifecycle, mocked agent streaming, and transcription adapter tests. Run `npm run build` for TypeScript, static assets, and native macOS helpers. Tests do not make paid API calls or launch native speech helpers.
 
 ## Limits
 

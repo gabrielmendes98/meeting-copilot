@@ -32,9 +32,8 @@ import {
   screenshotHotkey,
   summaryHotkey,
 } from "./env";
-import { MacosLiveSession } from "./live-session";
 import { captureRegion } from "./screenshot";
-import { pickProvider, transcribeWav } from "./transcribe";
+import { transcription, transcribeWav } from "./transcribe";
 import { assertWavHasAudio } from "./wav";
 import type { OverlayState, OverlayStatus } from "./types";
 
@@ -42,14 +41,13 @@ let overlay: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let busy = false;
 const capture = new SystemAudioCapture();
-const liveSession = new MacosLiveSession();
 
 function overlayPath(): string {
   return `${__dirname}/overlay/index.html`;
 }
 
 function listeningActive(): boolean {
-  return liveSession.active || capture.active;
+  return transcription.active || capture.active;
 }
 
 function sendState(status: OverlayStatus, text = "", label?: string): void {
@@ -81,7 +79,7 @@ function setTrayRecording(recording: boolean): void {
   tray.setTitle(recording ? "●" : "");
   tray.setToolTip(
     recording
-      ? liveSession.active
+      ? transcription.active
         ? "Meeting Copilot — listening"
         : "Meeting Copilot — recording"
       : idleTooltip(),
@@ -172,7 +170,7 @@ function trayTemplate(): MenuItemConstructorOptions[] {
     { type: "separator" },
     {
       label: "Stop listening",
-      enabled: liveSession.active,
+      enabled: transcription.active,
       click: () => {
         void stopListening();
       },
@@ -200,7 +198,7 @@ function hideOverlay(): void {
 }
 
 async function stopListening(): Promise<void> {
-  await liveSession.stop();
+  await transcription.stop();
   refreshTray();
   hideOverlay();
 }
@@ -225,15 +223,14 @@ async function askAndShow(
   sendState("answer", answer || emptyReply(mode), label);
 }
 
-async function toggleMacosLive(): Promise<void> {
+async function toggleLiveListening(): Promise<void> {
   if (busy) return;
 
-  if (!liveSession.active) {
-    if (!checkConfiguration()) return;
+  if (!transcription.active) {
     sendState("recording", `Listening… ${listeningHint()}.`);
     busy = true;
     try {
-      await liveSession.start();
+      await transcription.start();
       refreshTray();
     } catch (err) {
       refreshTray();
@@ -247,9 +244,9 @@ async function toggleMacosLive(): Promise<void> {
   await stopListening();
 }
 
-async function runMacosAction(mode: TranscriptMode): Promise<void> {
+async function runLiveAction(mode: TranscriptMode): Promise<void> {
   if (busy) return;
-  if (!liveSession.active) {
+  if (!transcription.active) {
     sendState(
       "error",
       `Start listening with ${displayHotkey(hotkey())} first.`,
@@ -260,7 +257,7 @@ async function runMacosAction(mode: TranscriptMode): Promise<void> {
   busy = true;
   try {
     sendState("transcribing", "Transcribing…");
-    const transcript = await liveSession.flushAndTranscript();
+    const transcript = await transcription.flushAndTranscript();
     await askAndShow(transcript, mode);
   } catch (err) {
     sendState("error", err instanceof Error ? err.message : String(err));
@@ -303,23 +300,24 @@ async function runClipAction(mode: TranscriptMode): Promise<void> {
 }
 
 function runTranscriptAction(mode: TranscriptMode): void {
-  if (pickProvider() === "macos") {
-    void runMacosAction(mode);
+  if (busy) return;
+  if (!checkConfiguration()) return;
+  if (transcription.supportsLive) {
+    void runLiveAction(mode);
     return;
   }
   void runClipAction(mode);
 }
 
 async function toggleCapture(): Promise<void> {
-  if (pickProvider() === "macos") {
-    await toggleMacosLive();
+  if (busy) return;
+  if (!listeningActive() && !checkConfiguration()) return;
+  if (transcription.supportsLive) {
+    await toggleLiveListening();
     return;
   }
 
-  if (busy) return;
-
   if (!capture.active) {
-    if (!checkConfiguration()) return;
     try {
       await capture.start();
       sendState("recording", `Recording… ${listeningHint()}.`);
@@ -431,7 +429,7 @@ if (!gotLock) {
     }
     overlay = createOverlay();
     createTray();
-    liveSession.onUnexpectedExit = (err) => {
+    transcription.onUnexpectedExit = (err) => {
       refreshTray();
       sendState("error", err.message);
     };
@@ -454,7 +452,7 @@ if (!gotLock) {
   app.on("will-quit", () => {
     globalShortcut.unregisterAll();
     capture.kill();
-    void liveSession.stop();
+    void transcription.dispose();
     void disposeAgent();
   });
 }
