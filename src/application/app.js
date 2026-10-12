@@ -4,6 +4,9 @@ const form = $("settings-form");
 let state;
 let saving = false;
 let files = [];
+let savedContextText = "";
+let contextTextLoaded = false;
+let savingContextText = false;
 let noticeTimer;
 function notify(message, error = false) {
   $("notice").textContent = message;
@@ -69,7 +72,8 @@ function renderFiles(next) {
     const name = document.createElement("div"); name.className = "file-name"; name.textContent = file.name;
     const meta = document.createElement("div"); meta.className = "file-meta"; meta.textContent = `${file.size < 1024 ? `${file.size} B` : `${Math.ceil(file.size / 1024)} KB`} · Added ${new Date(file.addedAt).toLocaleDateString()}`;
     info.append(name, meta);
-    const badge = document.createElement("span"); badge.className = "badge"; badge.textContent = file.available ? "Not connected yet" : "File moved or missing";
+    if (file.error) { meta.textContent = file.error; meta.classList.add("file-error"); }
+    const badge = document.createElement("span"); badge.className = "badge"; badge.textContent = file.available ? "Ready" : "Not included";
     const remove = document.createElement("button"); remove.className = "remove-file"; remove.textContent = "Remove"; remove.setAttribute("aria-label", `Remove ${file.name} from library`);
     remove.addEventListener("click", async () => { try { renderFiles(await api.removeContext(file.id)); } catch (error) { notify(error.message, true); } });
     row.append(icon, info, badge, remove); $("context-list").append(row);
@@ -81,11 +85,27 @@ document.querySelectorAll("[data-action]").forEach((button) => button.addEventLi
 $("copy-reply").addEventListener("click", async () => { try { await navigator.clipboard.writeText(state.latestReply); notify("Response copied."); } catch { notify("Could not copy the response.", true); } });
 async function addFiles() {
   $("add-context").disabled = $("add-context-empty").disabled = true;
+  $("add-context").textContent = "Importing…";
   try { renderFiles(await api.addContext()); } catch (error) { notify(error.message, true); }
-  finally { $("add-context").disabled = $("add-context-empty").disabled = false; }
+  finally { $("add-context").disabled = $("add-context-empty").disabled = false; $("add-context").textContent = "＋ Add files"; }
 }
 $("add-context").addEventListener("click", addFiles);
 $("add-context-empty").addEventListener("click", addFiles);
+function updateContextTextStatus() {
+  const dirty = $("context-text").value !== savedContextText;
+  $("save-context-text").disabled = !contextTextLoaded || savingContextText || !dirty;
+  $("context-text-hint").textContent = savingContextText ? "Saving…" : dirty ? "Unsaved changes. Save to use this text with your documents." : savedContextText.trim() ? "Saved text is included with your documents." : "Save text to include it with your documents.";
+}
+$("context-text").disabled = true;
+$("context-text").addEventListener("input", updateContextTextStatus);
+$("context-text-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!contextTextLoaded || savingContextText) return;
+  savingContextText = true; updateContextTextStatus();
+  try { savedContextText = await api.saveContextText($("context-text").value); notify(savedContextText.trim() ? "Context text saved." : "Context text cleared."); }
+  catch (error) { notify(error.message, true); }
+  finally { savingContextText = false; updateContextTextStatus(); }
+});
 form.elements.STT_PROVIDER.addEventListener("change", updateSpeechField);
 form.elements.AGENT_PROVIDER.addEventListener("change", () => {
   const input = form.elements.AGENT_MODEL;
@@ -102,5 +122,10 @@ async function initialize() {
   try { const initial = await api.getState(); populateSettings(initial.settings); render(initial); }
   catch (error) { notify(error.message, true); }
   try { renderFiles(await api.listContext()); } catch (error) { notify(error.message, true); }
+  try {
+    savedContextText = await api.getContextText();
+    $("context-text").value = savedContextText; contextTextLoaded = true; $("context-text").disabled = false;
+    updateContextTextStatus();
+  } catch (error) { $("context-text-hint").textContent = "Could not load saved text. Reopen the window to retry."; notify(error.message, true); }
 }
 initialize();

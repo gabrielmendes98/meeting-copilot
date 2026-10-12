@@ -17,7 +17,7 @@
     "prepare:app": "node scripts/run-app.cjs --prepare"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.16.0 <21 || >=22.3.0"
   },
   "build": {
     "appId": "dev.gabrielocc.meeting-copilot",
@@ -60,7 +60,10 @@
     "@cursor/sdk": "^1.0.18",
     "dotenv": "^17.4.2",
     "electron": "^41.7.1",
-    "openai": "^6.49.0"
+    "@xmldom/xmldom": "^0.9.12",
+    "jszip": "^3.10.2",
+    "openai": "^6.49.0",
+    "pdf-parse": "^2.4.5"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

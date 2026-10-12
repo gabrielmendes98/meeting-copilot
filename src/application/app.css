@@ -8,4 +8,4 @@ main{flex:1;min-width:0;overflow-y:auto}.titlebar{height:58px;position:sticky;to
 @media(max-width:1000px){.sidebar{width:200px}.page{padding:22px 25px}.titlebar{padding:0 25px}.session-card{padding:20px 17px}.session-intro{gap:10px}.session-intro h2{font-size:13px}.waveform{width:40px;height:40px;flex-shrink:0}h1{font-size:30px}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
-.context-actions{display:flex;justify-content:flex-end;margin-bottom:18px}
+textarea{font:inherit;width:100%;border:1px solid #dce2ef;border-radius:7px;background:#fbfcff;padding:12px;font-size:13px;color:#34415e;resize:vertical;min-height:120px;line-height:1.6}textarea:focus-visible{outline:3px solid var(--logo-blue);outline-offset:3px}.context-text-footer{display:flex;justify-content:space-between;align-items:center;gap:16px}.context-text-footer small{font-size:11px;color:var(--muted);line-height:1.5}.file-error{color:#884738}.context-empty{padding:32px 20px}

@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("meetingCopilot", {
   action: (action: string) => ipcRenderer.invoke("app-action", action),
   saveSettings: (settings: unknown) => ipcRenderer.invoke("app-save-settings", settings),
   listContext: () => ipcRenderer.invoke("app-context-list"),
+  getContextText: () => ipcRenderer.invoke("app-context-text-get"),
+  saveContextText: (text: string) => ipcRenderer.invoke("app-context-text-save", text),
   addContext: () => ipcRenderer.invoke("app-context-add"),
   removeContext: (id: string) => ipcRenderer.invoke("app-context-remove", id),
 });

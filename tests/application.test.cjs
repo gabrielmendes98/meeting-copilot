@@ -59,7 +59,7 @@ test('settings encrypt storage, preserve keys on blank input, and never expose c
   } finally { process.env = oldEnvironment; fs.rmSync(directory, { recursive: true, force: true }); }
 });
 
-test('context library deduplicates references and removes them without deleting originals', async () => {
+test('context library saves snapshots, deduplicates imports, and leaves originals intact', async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-context-test-'));
   const source = path.join(directory, 'notes.txt'); fs.writeFileSync(source, 'Private meeting notes');
   const library = withElectronMock({
@@ -72,9 +72,11 @@ test('context library deduplicates references and removes them without deleting 
     assert.equal(files[0].name, 'notes.txt');
     assert.equal(files[0].available, true);
     assert.equal('path' in files[0], false);
-    assert.equal(fs.readFileSync(path.join(directory, 'context-files.json'), 'utf8').includes('Private meeting notes'), false);
+    assert.equal('text' in files[0], false);
+    assert.equal(fs.readFileSync(path.join(directory, 'context-files.json'), 'utf8').includes('Private meeting notes'), true);
     fs.renameSync(source, `${source}.moved`);
-    assert.equal(library.listContextFiles()[0].available, false);
+    assert.equal(library.listContextFiles()[0].available, true);
+    assert.match(await library.getAgentContext(), /Private meeting notes/);
     assert.deepEqual(library.removeContextFile(files[0].id), []);
     assert.equal(fs.existsSync(`${source}.moved`), true);
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }

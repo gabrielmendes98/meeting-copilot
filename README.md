@@ -80,7 +80,7 @@ With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
 
    **Settings** configures the AI provider, model, API keys, transcription provider, and shortcuts. Save while idle to apply changes immediately. Shortcut conflicts leave your previous settings intact. Keys are encrypted using Electron's macOS-backed `safeStorage`; the renderer receives only whether a key exists. Saved settings in the app's user-data directory override `.env` on subsequent launches. Leaving an API-key field blank preserves the existing key.
 
-   **Context library** accepts PDF, TXT, and Markdown file references and persists them between launches. It does not read, upload, or pass file contents to the agent yet. Removing a reference leaves the original file intact; moved files are marked as unavailable.
+   **Context library** accepts multiple PDF, DOCX, TXT, Markdown, CSV, and JSON documents together, plus freeform text in **Direct context**. Click **Save text** to apply or clear your notes. Readable document text is extracted locally and saved between launches; all ready documents and saved notes are sent together to the selected AI provider with every answer, summary, briefing, and screenshot request. Imported documents are snapshots: remove and re-add to update them. Removing an entry leaves the original file intact. Files can be up to 20 MB each, with a combined limit of 120,000 characters for documents and notes; content is never silently truncated. Failed imports display a reason and are excluded, while other documents remain usable. Scanned PDFs need OCR first, and password-protected or invalid documents may not be readable. Existing file references remain usable as long as their originals are accessible; re-import them to save a snapshot.
 
 2. `Option+Space` starts **continuous** listening. The overlay shows **Recording**. Esc hides the overlay; listening keeps going (a ● stays in the menu bar).
 3. While listening:
@@ -161,6 +161,5 @@ Changing `app.setName()` alone cannot change the operating system's app name ([E
 
 #### To do
 
-- Implement Context library functionality
 - Implement stealth mode
 - In our settings, the "model" input should be a "select" component, with pre-defined agent IDs. This way the user does not need to know the ID of the agent.

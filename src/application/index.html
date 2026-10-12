@@ -35,9 +35,15 @@
       <div class="meeting-footer"><span>Something on your screen?</span><button class="text-button" data-action="screenshot">Ask from a screenshot <kbd id="screenshot-shortcut">⌥ ⇧ Space</kbd></button></div>
     </section>
     <section id="page-context" class="page" hidden>
-      <div class="context-actions"><button id="add-context" class="primary">＋ Add files</button></div>
-      <div class="banner context-banner"><span><strong>Preparing for what’s next</strong><br>Save references here now. File contents aren’t read or sent to your agent yet.</span><span class="badge">Coming soon</span></div>
-      <div id="context-empty" class="context-empty"><span class="document-symbol" aria-hidden="true">▤</span><h2>Give your copilot the bigger picture</h2><p>Keep project briefs, meeting notes, and reference documents together.<br>Support for PDF, plain text, and Markdown.</p><button id="add-context-empty" class="secondary">Choose files</button><small>Files stay in their original location. Only references are saved.</small></div>
+      <div class="page-heading"><div><h1>Context library</h1><p class="subtitle">Give your copilot the bigger picture.</p></div><button id="add-context" class="primary">＋ Add files</button></div>
+      <div class="banner context-banner"><span><strong>Your references, working together</strong><br>All ready documents and saved text are included in each answer, summary, notes, and screenshot request to your selected AI provider.</span></div>
+      <form id="context-text-form" class="settings-card">
+        <div class="settings-heading"><h2>Direct context</h2><p>Paste background information, project details, or meeting preparation notes.</p></div>
+        <label for="context-text">Your notes<textarea id="context-text" rows="7" maxlength="120000" placeholder="What should your copilot know?" aria-describedby="context-text-hint"></textarea></label>
+        <div class="context-text-footer"><small id="context-text-hint" role="status">Loading saved text…</small><button id="save-context-text" type="submit" class="primary" disabled>Save text</button></div>
+      </form>
+      <div class="settings-heading"><h2>Documents</h2><p>PDF, DOCX, TXT, Markdown, CSV, and JSON · 20 MB per file · 120,000 characters across all context.<br>Readable text is saved locally at import. Remove and re-add a document to update it. Scanned PDFs require OCR.</p></div>
+      <div id="context-empty" class="context-empty"><span class="document-symbol" aria-hidden="true">▤</span><h2>Add your reference documents</h2><p>Choose multiple files, including different formats, to use together.</p><button id="add-context-empty" class="secondary">Choose files</button><small>Removing a document leaves the original file intact.</small></div>
       <ul id="context-list" class="file-list" aria-label="Context files"></ul>
     </section>
     <section id="page-settings" class="page" hidden>

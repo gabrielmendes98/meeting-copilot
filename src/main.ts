@@ -37,7 +37,7 @@ import { captureRegion } from "./screenshot";
 import { transcription, transcribeWav, resetTranscription, pickProvider } from "./transcribe";
 import { loadSettings, publicSettings, saveSettings } from "./settings";
 import { validateSettings, shortcutKeys } from "./settings-config";
-import { addContextFiles, listContextFiles, removeContextFile } from "./context-files";
+import { addContextFiles, listContextFiles, removeContextFile, getContextText, saveContextText } from "./context-files";
 import { assertWavHasAudio } from "./wav";
 import type { OverlayState, OverlayStatus } from "./types";
 
@@ -184,6 +184,8 @@ function registerApplicationIpc(): void {
     return publicSettings();
   });
   ipcMain.handle("app-context-list", (event) => { authorize(event); return listContextFiles(); });
+  ipcMain.handle("app-context-text-get", (event) => { authorize(event); return getContextText(); });
+  ipcMain.handle("app-context-text-save", (event, text: unknown) => { authorize(event); return saveContextText(text); });
   ipcMain.handle("app-context-add", async (event) => { authorize(event); return addContextFiles(mainWindow!); });
   ipcMain.handle("app-context-remove", (event, id: string) => { authorize(event); if (typeof id !== "string") throw new Error("Invalid file."); return removeContextFile(id); });
 }
