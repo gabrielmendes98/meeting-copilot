@@ -28,6 +28,7 @@ import {
   hotkey,
   loadEnv,
   missingKeys,
+  missingAgentKeys,
   screenshotHotkey,
   summaryHotkey,
 } from "./env";
@@ -228,14 +229,7 @@ async function toggleMacosLive(): Promise<void> {
   if (busy) return;
 
   if (!liveSession.active) {
-    const missing = missingKeys();
-    if (missing.length > 0) {
-      sendState(
-        "error",
-        `Set these in .env: ${missing.join(", ")}. See .env.example.`,
-      );
-      return;
-    }
+    if (!checkConfiguration()) return;
     sendState("recording", `Listening… ${listeningHint()}.`);
     busy = true;
     try {
@@ -325,14 +319,7 @@ async function toggleCapture(): Promise<void> {
   if (busy) return;
 
   if (!capture.active) {
-    const missing = missingKeys();
-    if (missing.length > 0) {
-      sendState(
-        "error",
-        `Set these in .env: ${missing.join(", ")}. See .env.example.`,
-      );
-      return;
-    }
+    if (!checkConfiguration()) return;
     try {
       await capture.start();
       sendState("recording", `Recording… ${listeningHint()}.`);
@@ -360,10 +347,7 @@ async function toggleCapture(): Promise<void> {
 async function toggleScreenshot(): Promise<void> {
   if (busy) return;
 
-  if (!process.env.CURSOR_API_KEY?.trim()) {
-    sendState("error", "Set these in .env: CURSOR_API_KEY. See .env.example.");
-    return;
-  }
+  if (!checkConfiguration(true)) return;
 
   hideOverlay();
   busy = true;
@@ -390,6 +374,17 @@ async function toggleScreenshot(): Promise<void> {
       }
     }
     busy = false;
+  }
+}
+
+function checkConfiguration(agentOnly = false): boolean {
+  try {
+    const missing = agentOnly ? missingAgentKeys() : missingKeys();
+    if (missing.length) throw new Error(`Set these in .env: ${missing.join(", ")}. See .env.example.`);
+    return true;
+  } catch (err) {
+    sendState("error", err instanceof Error ? err.message : String(err));
+    return false;
   }
 }
 
@@ -447,7 +442,7 @@ if (!gotLock) {
       }
     });
     registerHotkeys();
-    if (missingKeys().length === 0) {
+    if (checkConfiguration(true)) {
       try {
         await warmAgent();
       } catch (err) {

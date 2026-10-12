@@ -1,10 +1,11 @@
 {
   "name": "meeting-copilot",
   "version": "0.1.0",
-  "description": "Meeting copilot: hotkey captures system audio, transcribes it, and answers via Cursor.",
+  "description": "Meeting copilot: hotkey captures system audio, transcribes it, and answers via configurable AI providers.",
   "main": "dist/main.js",
   "private": true,
   "scripts": {
+    "test": "tsc && node --test tests/*.test.cjs",
     "copy:static": "mkdir -p dist/overlay dist/bin dist/assets && cp src/overlay/index.html src/overlay/overlay.css src/overlay/overlay.js dist/overlay/ && cp src/assets/trayTemplate*.png dist/assets/",
     "build:native:capture": "swiftc -parse-as-library -O -o dist/bin/audio-capture native/audio-capture/main.swift -framework Foundation -framework ScreenCaptureKit -framework AVFoundation -framework CoreMedia -framework CoreAudio -framework CoreGraphics -framework CoreVideo -framework AudioToolbox -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker native/audio-capture/Info.plist",
     "build:native:speech": "bash scripts/build-speech-app.sh",
@@ -57,7 +58,8 @@
   "dependencies": {
     "@cursor/sdk": "^1.0.18",
     "dotenv": "^17.4.2",
-    "electron": "^41.7.1"
+    "electron": "^41.7.1",
+    "openai": "^6.49.0"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

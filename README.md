@@ -1,15 +1,15 @@
 # Meeting Copilot
 
-A macOS menu-bar app: press a hotkey to capture **system audio** (Zoom/Meet/Teams), transcribe it in **English**, and send the text to a local Cursor agent (Composer 2.5 Fast). A floating overlay shows a short reply you can read and say in the meeting. A second hotkey captures a **screen region** and asks the same agent about the screenshot.
+A macOS menu-bar app: press a hotkey to capture **system audio** (Zoom/Meet/Teams), transcribe it in **English**, and send the text to a configurable AI provider (OpenAI by default). A floating overlay shows a short reply you can read and say in the meeting. A second hotkey captures a **screen region** and asks the same agent about the screenshot.
 
-The Cursor IDE does **not** need to be open.
+OpenAI and Cursor are supported. The Cursor IDE does **not** need to be open when using Cursor.
 
 ## Requirements
 
 - macOS 13+
 - Node 20+
 - Xcode Command Line Tools (`xcode-select --install`) — needed to compile the Swift helpers
-- [CURSOR_API_KEY](https://cursor.com/dashboard/integrations)
+- `AGENT_API_KEY` from [OpenAI](https://platform.openai.com/api-keys) (default) or [Cursor](https://cursor.com/dashboard/integrations)
 - Transcription: SpeechAnalyzer on macOS 26+ **or** [OpenAI](https://platform.openai.com/api-keys) **or** [Groq](https://console.groq.com/keys)
 
 ## Setup
@@ -17,11 +17,26 @@ The Cursor IDE does **not** need to be open.
 ```bash
 cd ~/Documents/meeting-copilot
 cp .env.example .env
-# edit .env: CURSOR_API_KEY is required
+# edit .env: AGENT_API_KEY must be a key from the selected agent provider
 # STT_PROVIDER=macos needs no STT API key
 npm install
 npm start
 ```
+
+### Agent provider (`AGENT_PROVIDER`)
+
+| Value | Default model | Required settings |
+| --- | --- | --- |
+| `openai` (default) | `gpt-4.1-mini` | `AGENT_API_KEY` (OpenAI key) |
+| `cursor` | `composer-2.5` (Fast) | `AGENT_API_KEY` (Cursor key) |
+
+`AGENT_MODEL` overrides the selected provider's model. If switching from the example's OpenAI configuration to Cursor, also change `AGENT_MODEL` to `composer-2.5` or remove it to use Cursor's default. Existing installations now default to OpenAI, even if a Cursor key is present; set `AGENT_PROVIDER=cursor` to continue using Cursor.
+
+`AGENT_API_KEY` is the only agent credential setting. When switching providers, replace its value with a key issued by the selected service. New provider protocols can be added through adapters behind the shared interface.
+
+Replace the former agent setting (`OPENAI_API_KEY` or `CURSOR_API_KEY`) with `AGENT_API_KEY` in existing `.env` files. Cloud transcription still uses its own credentials (`OPENAI_API_KEY` or `GROQ_API_KEY`), allowing it to use a different service from the agent.
+
+The default OpenAI model accepts text and images and supports streaming ([official OpenAI documentation](https://developers.openai.com/api/docs/models/gpt-4.1-mini)). Agent credentials are checked for the selected provider only. `STT_PROVIDER` remains independent; selecting OpenAI for answers does not change the transcription setting.
 
 ### Transcription (`STT_PROVIDER`)
 
@@ -91,10 +106,25 @@ Screen Recording permission is the same one used for system audio.
 
 1. A Swift helper (`audio-capture`) uses ScreenCaptureKit (`capturesAudio`, `excludesCurrentProcessAudio`). With `macos` it writes rotating WAV chunks; with cloud STT it writes one file until you stop.
 2. English transcription: SpeechAnalyzer on the Mac (`--watch` process for live macos), or OpenAI / Groq for a finished clip.
-3. Audio transcripts and screenshots go to a warmed-up Cursor agent. A `preToolUse` hook (in `agent-home/`, not the repo root) denies tools.
+3. Audio transcripts and screenshots go through a shared agent interface to the configured provider. OpenAI uses stateless, streamed Chat Completions without tools. Cursor retains its local agent session.
 4. Temporary WAV chunks and screenshot PNGs are deleted afterwards.
 
 Typical time after a macos action (`Option+1` / `2` / `3`): a few seconds for the flushed tail plus the agent. Cloud STT after `Option+1` / `2` / `3` on a 20–40s clip: about 4–8s.
+
+## Provider architecture and development
+
+The application uses the Strategy pattern with provider adapters and a factory:
+
+- `src/agent.ts` owns meeting prompts and builds provider-independent requests.
+- `src/providers/types.ts` defines the `AgentProvider` contract (warm, answer, dispose) and accumulated-text streaming callback.
+- `src/providers/service.ts` owns lazy initialization, concurrent warm-up, retry after initialization failure, and shutdown.
+- `src/providers/config.ts` resolves and validates environment configuration.
+- `src/providers/index.ts` creates only the selected adapter, loading its SDK lazily.
+- `src/providers/openai.ts` and `cursor.ts` translate requests and streams for their SDKs.
+
+To add a provider with another protocol, implement `AgentProvider`, extend the configuration union and validation, and add a factory branch. Meeting prompts, hotkeys, and overlay code need no provider-specific changes. All request context belongs in `AgentRequest`; adapters must return trimmed answers and emit the full accumulated text.
+
+Run `npm test` for configuration, lifecycle, and mocked streaming tests. Run `npm run build` for TypeScript, static assets, and native macOS helpers. Tests do not make paid API calls.
 
 ## Limits
 
