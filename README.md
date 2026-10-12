@@ -25,10 +25,10 @@ npm start
 
 ### Agent provider (`AGENT_PROVIDER`)
 
-| Value | Default model | Required settings |
-| --- | --- | --- |
-| `openai` (default) | `gpt-4.1-mini` | `AGENT_API_KEY` (OpenAI key) |
-| `cursor` | `composer-2.5` (Fast) | `AGENT_API_KEY` (Cursor key) |
+| Value              | Default model         | Required settings            |
+| ------------------ | --------------------- | ---------------------------- |
+| `openai` (default) | `gpt-4.1-mini`        | `AGENT_API_KEY` (OpenAI key) |
+| `cursor`           | `composer-2.5` (Fast) | `AGENT_API_KEY` (Cursor key) |
 
 `AGENT_MODEL` overrides the selected provider's model. If switching from the example's OpenAI configuration to Cursor, also change `AGENT_MODEL` to `composer-2.5` or remove it to use Cursor's default. Existing installations now default to OpenAI, even if a Cursor key is present; set `AGENT_PROVIDER=cursor` to continue using Cursor.
 
@@ -40,12 +40,12 @@ The default OpenAI model accepts text and images and supports streaming ([offici
 
 ### Transcription (`STT_PROVIDER`)
 
-| Value | Engine | Extra key |
-| --- | --- | --- |
-| `macos` | SpeechAnalyzer (`en-US`, on-device, macOS 26+) | none |
-| `openai` | `gpt-4o-mini-transcribe` | `STT_PROVIDER_API_KEY` (OpenAI key) |
-| `groq` | `whisper-large-v3-turbo` | `STT_PROVIDER_API_KEY` (Groq key) |
-| `auto` | OpenAI if the STT key is set, otherwise macOS | OpenAI key when set |
+| Value    | Engine                                         | Extra key                           |
+| -------- | ---------------------------------------------- | ----------------------------------- |
+| `macos`  | SpeechAnalyzer (`en-US`, on-device, macOS 26+) | none                                |
+| `openai` | `gpt-4o-mini-transcribe`                       | `STT_PROVIDER_API_KEY` (OpenAI key) |
+| `groq`   | `whisper-large-v3-turbo`                       | `STT_PROVIDER_API_KEY` (Groq key)   |
+| `auto`   | OpenAI if the STT key is set, otherwise macOS  | OpenAI key when set                 |
 
 `STT_PROVIDER_API_KEY` is the only transcription credential setting and is independent of `AGENT_API_KEY`. For example, use `AGENT_PROVIDER=cursor` with a Cursor `AGENT_API_KEY`, and `STT_PROVIDER=openai` with an OpenAI `STT_PROVIDER_API_KEY`. `auto` assumes an OpenAI key; choose `STT_PROVIDER=groq` explicitly for a Groq key. macOS transcription needs no API key.
 
@@ -81,6 +81,7 @@ With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
    **Settings** configures the AI provider, model, API keys, transcription provider, and shortcuts. Save while idle to apply changes immediately. Shortcut conflicts leave your previous settings intact. Keys are encrypted using Electron's macOS-backed `safeStorage`; the renderer receives only whether a key exists. Saved settings in the app's user-data directory override `.env` on subsequent launches. Leaving an API-key field blank preserves the existing key.
 
    **Context library** accepts PDF, TXT, and Markdown file references and persists them between launches. It does not read, upload, or pass file contents to the agent yet. Removing a reference leaves the original file intact; moved files are marked as unavailable.
+
 2. `Option+Space` starts **continuous** listening. The overlay shows **Recording**. Esc hides the overlay; listening keeps going (a ● stays in the menu bar).
 3. While listening:
    - `Option+1` checkpoints: transcribes the latest audio and asks for a spoken English reply to the last question, using the whole call as context.
@@ -92,12 +93,12 @@ With `openai` / `groq`: `Option+Space` starts and stops a clip. `Option+1` / `Op
 
 Shortcuts are configurable in **Settings** or initially in `.env`. In Electron, Option on Mac is `Alt`.
 
-| Action | Default |
-| --- | --- |
-| Start / stop listening | `HOTKEY=Alt+Space` |
-| Answer last question | `CHECKPOINT_HOTKEY=Alt+1` |
-| Summary | `SUMMARY_HOTKEY=Alt+2` |
-| Summary + notes | `BRIEFING_HOTKEY=Alt+3` |
+| Action                 | Default                   |
+| ---------------------- | ------------------------- |
+| Start / stop listening | `HOTKEY=Alt+Space`        |
+| Answer last question   | `CHECKPOINT_HOTKEY=Alt+1` |
+| Summary                | `SUMMARY_HOTKEY=Alt+2`    |
+| Summary + notes        | `BRIEFING_HOTKEY=Alt+3`   |
 
 ## Screenshot questions
 
@@ -157,3 +158,9 @@ Run `npm test` for configuration, lifecycle, mocked agent streaming, and transcr
 `npm run dev` and `npm start` use `scripts/run-app.cjs` to create a locally branded **Meeting Copilot.app** from the installed Electron runtime. The bundle has its own display name, executable name, identifier, icon, and ad-hoc development signature, so the Dock and macOS application menu show **Meeting Copilot**. The installed Electron dependency is left intact. Runtime bundles are cached under ignored `out/runtime/` directories and regenerated when Electron, the icon, or the launcher changes. `npm run prepare:app` prepares and verifies the bundle without launching it.
 
 Changing `app.setName()` alone cannot change the operating system's app name ([Electron documentation](https://www.electronjs.org/docs/latest/api/app#appsetnamename)). Launch through the npm scripts rather than `electron .` to use the branded bundle.
+
+#### To do
+
+- Implement Context library functionality
+- Implement stealth mode
+- In our settings, the "model" input should be a "select" component, with pre-defined agent IDs. This way the user does not need to know the ID of the agent.
