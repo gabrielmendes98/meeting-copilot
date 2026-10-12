@@ -12,8 +12,9 @@
     "build:native": "mkdir -p dist/bin && npm run build:native:capture && npm run build:native:speech",
     "icons": "swift scripts/generate-icons.swift",
     "build": "tsc && npm run copy:static && npm run build:native",
-    "start": "npm run build && electron .",
-    "dev": "tsc && npm run copy:static && electron ."
+    "start": "npm run build && node scripts/run-app.cjs",
+    "dev": "tsc && npm run copy:static && node scripts/run-app.cjs",
+    "prepare:app": "node scripts/run-app.cjs --prepare"
   },
   "engines": {
     "node": ">=20"
@@ -66,5 +67,6 @@
     "electron-builder": "^26.15.3",
     "typescript": "^7.0.2"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "productName": "Meeting Copilot"
 }

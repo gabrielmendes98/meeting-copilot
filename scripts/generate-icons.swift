@@ -46,28 +46,32 @@ func drawAppIcon(ctx: CGContext, size: CGFloat) {
   ctx.draw(brandIcon, in: CGRect(x: 0, y: 0, width: size, height: size))
 }
 
-func drawWaveform(ctx: CGContext, in rect: CGRect, color: CGColor) {
-  let heights: [CGFloat] = [0.42, 1.0, 0.68]
-  let gaps: CGFloat = 0.32
-  let n = CGFloat(heights.count)
-  let barW = rect.width / (n + gaps * (n - 1))
-  let gap = barW * gaps
-  ctx.setFillColor(color)
-  for (i, h) in heights.enumerated() {
-    let barH = max(rect.height * h, barW)
-    let x = rect.minX + CGFloat(i) * (barW + gap)
-    let y = rect.midY - barH / 2
-    let bar = CGRect(x: x, y: y, width: barW, height: barH)
-    let r = barW / 2
-    ctx.addPath(CGPath(roundedRect: bar, cornerWidth: r, cornerHeight: r, transform: nil))
-    ctx.fillPath()
-  }
-}
-
+// A compact monochrome silhouette of the ribbon M, rather than the old
+// waveform. Template alpha lets macOS supply the correct light/dark tint.
 func drawTray(ctx: CGContext, size: CGFloat) {
-  let inset = size * 0.14
-  let rect = CGRect(x: inset, y: inset, width: size - inset * 2, height: size - inset * 2)
-  drawWaveform(ctx: ctx, in: rect, color: srgb(0, 0, 0))
+  ctx.saveGState()
+  ctx.translateBy(x: size * 0.08, y: size * 0.92)
+  ctx.scaleBy(x: size * 0.84, y: -size * 0.84)
+  let ribbon = CGMutablePath()
+  ribbon.move(to: CGPoint(x: 0.08, y: 0.82))
+  ribbon.addLine(to: CGPoint(x: 0.08, y: 0.24))
+  ribbon.addCurve(to: CGPoint(x: 0.22, y: 0.16), control1: CGPoint(x: 0.08, y: 0.12), control2: CGPoint(x: 0.13, y: 0.10))
+  ribbon.addCurve(to: CGPoint(x: 0.50, y: 0.43), control1: CGPoint(x: 0.30, y: 0.21), control2: CGPoint(x: 0.42, y: 0.35))
+  ribbon.addCurve(to: CGPoint(x: 0.78, y: 0.16), control1: CGPoint(x: 0.58, y: 0.35), control2: CGPoint(x: 0.70, y: 0.21))
+  ribbon.addCurve(to: CGPoint(x: 0.92, y: 0.24), control1: CGPoint(x: 0.87, y: 0.10), control2: CGPoint(x: 0.92, y: 0.12))
+  ribbon.addLine(to: CGPoint(x: 0.92, y: 0.82))
+  ribbon.addCurve(to: CGPoint(x: 0.72, y: 0.72), control1: CGPoint(x: 0.92, y: 0.95), control2: CGPoint(x: 0.72, y: 0.91))
+  ribbon.addLine(to: CGPoint(x: 0.72, y: 0.44))
+  ribbon.addLine(to: CGPoint(x: 0.57, y: 0.61))
+  ribbon.addCurve(to: CGPoint(x: 0.43, y: 0.61), control1: CGPoint(x: 0.52, y: 0.67), control2: CGPoint(x: 0.48, y: 0.67))
+  ribbon.addLine(to: CGPoint(x: 0.28, y: 0.44))
+  ribbon.addLine(to: CGPoint(x: 0.28, y: 0.72))
+  ribbon.addCurve(to: CGPoint(x: 0.08, y: 0.82), control1: CGPoint(x: 0.28, y: 0.91), control2: CGPoint(x: 0.08, y: 0.95))
+  ribbon.closeSubpath()
+  ctx.addPath(ribbon)
+  ctx.setFillColor(srgb(0, 0, 0))
+  ctx.fillPath()
+  ctx.restoreGState()
 }
 
 func write(_ data: Data, _ url: URL) throws {

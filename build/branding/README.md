@@ -2,7 +2,7 @@
 
 `meeting-copilot-source.png` is the original transparent artwork, generated with the built-in ImageGen tool. Run `npm run icons` to create `build/icon.png`, the macOS `build/icon.icns`, and the menu-bar template assets. `npm run copy:static` copies the app icon into the shared Dock/sidebar runtime asset.
 
-The Dock and sidebar use the blue ribbon M. The menu bar retains its monochrome waveform for readability as a small macOS template icon.
+The Dock and sidebar use the blue ribbon M. The menu bar uses a simplified monochrome ribbon M silhouette for readability as a small macOS template icon. macOS supplies its tint in light and dark mode.
 
 ## Generation prompt
 

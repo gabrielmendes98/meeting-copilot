@@ -76,7 +76,7 @@ npm start
 
 With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
 
-1. The app opens a full workspace window and appears in the Dock, alongside its waveform menu-bar icon. The **Meeting** page provides listening, answer, summary, notes, screenshot, and copy controls. Closing the workspace keeps the app and meeting session running; reopen it from the Dock or **Open Meeting Copilot** in the tray menu. Use **Quit** to stop the app.
+1. The app opens a full workspace window and appears in the Dock, alongside its ribbon M menu-bar icon. The **Meeting** page provides listening, answer, summary, notes, screenshot, and copy controls. Closing the workspace keeps the app and meeting session running; reopen it from the Dock or **Open Meeting Copilot** in the tray menu. Use **Quit** to stop the app.
 
    **Settings** configures the AI provider, model, API keys, transcription provider, and shortcuts. Save while idle to apply changes immediately. Shortcut conflicts leave your previous settings intact. Keys are encrypted using Electron's macOS-backed `safeStorage`; the renderer receives only whether a key exists. Saved settings in the app's user-data directory override `.env` on subsequent launches. Leaving an API-key field blank preserves the existing key.
 
@@ -151,3 +151,9 @@ Run `npm test` for configuration, lifecycle, mocked agent streaming, and transcr
 - Captures the system mix (other people on the call). Your headset mic usually is not included.
 - Zoom/Meet may require an extra in-app recording permission.
 - Transcribing a meeting may have consent implications (company policy / local law).
+
+### Development app name on macOS
+
+`npm run dev` and `npm start` use `scripts/run-app.cjs` to create a locally branded **Meeting Copilot.app** from the installed Electron runtime. The bundle has its own display name, executable name, identifier, icon, and ad-hoc development signature, so the Dock and macOS application menu show **Meeting Copilot**. The installed Electron dependency is left intact. Runtime bundles are cached under ignored `out/runtime/` directories and regenerated when Electron, the icon, or the launcher changes. `npm run prepare:app` prepares and verifies the bundle without launching it.
+
+Changing `app.setName()` alone cannot change the operating system's app name ([Electron documentation](https://www.electronjs.org/docs/latest/api/app#appsetnamename)). Launch through the npm scripts rather than `electron .` to use the branded bundle.
