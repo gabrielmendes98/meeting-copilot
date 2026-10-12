@@ -43,12 +43,13 @@ function render(next) {
   $("session-title").textContent = listening ? (live ? "Listening to the conversation" : "Recording a meeting clip") : "Ready for your next meeting";
   $("session-description").textContent = listening ? (live ? "Ask for help at any point. Listening continues." : "Choose an action to stop and transcribe this clip.") : "Capture the conversation from your meeting app.";
   $("capture").firstChild.textContent = listening ? (live ? "Stop listening " : "Stop recording ") : (live ? "Start listening " : "Start recording ");
-  const shortcuts = { "record-shortcut": "HOTKEY", "answer-shortcut": "CHECKPOINT_HOTKEY", "summary-shortcut": "SUMMARY_HOTKEY", "notes-shortcut": "BRIEFING_HOTKEY", "screenshot-shortcut": "SCREENSHOT_HOTKEY" };
+  const shortcuts = { "record-shortcut": "HOTKEY", "answer-shortcut": "CHECKPOINT_HOTKEY", "summary-shortcut": "SUMMARY_HOTKEY", "notes-shortcut": "BRIEFING_HOTKEY", "screenshot-shortcut": "SCREENSHOT_HOTKEY", "stealth-shortcut": "STEALTH_HOTKEY" };
   for (const [id, key] of Object.entries(shortcuts)) $(id).textContent = shortcut(settings.values[key]);
   document.querySelectorAll("[data-action]").forEach((button) => {
     const action = button.dataset.action;
-    button.disabled = busy || (["checkpoint", "summary", "briefing"].includes(action) && !listening);
+    button.disabled = action === "stealth" ? !next.stealthAvailable : busy || (["checkpoint", "summary", "briefing"].includes(action) && !listening);
   });
+  $("stealth-hint").textContent = next.stealthAvailable ? `Press ${shortcut(settings.values.STEALTH_HOTKEY)} to restore the app, even while it is working. Restarting restores normal mode.` : "Stealth mode requires macOS and an available restore shortcut. Check Settings for shortcut conflicts.";
   $("configuration-banner").hidden = !next.configurationError;
   $("configuration-message").textContent = next.configurationError;
   const isError = overlay.status === "error";

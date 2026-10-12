@@ -10,6 +10,7 @@ test('settings reject unsupported providers and conflicting shortcut aliases', (
   assert.throws(() => validateSettings({ ...settingDefaults, AGENT_PROVIDER: 'unknown' }), /supported agent/);
   assert.throws(() => validateSettings({ ...settingDefaults, STT_PROVIDER: 'unknown' }), /supported transcription/);
   assert.throws(() => validateSettings({ ...settingDefaults, CHECKPOINT_HOTKEY: 'Option+Space' }), /different shortcut/);
+  assert.throws(() => validateSettings({ ...settingDefaults, STEALTH_HOTKEY: 'Option+Space' }), /different shortcut/);
   assert.throws(() => validateSettings({ ...settingDefaults, AGENT_MODEL: ' ' }), /Enter a value/);
   assert.deepEqual(validateSettings({ ...settingDefaults, AGENT_API_KEY: '', ignored: 'untrusted' }), settingDefaults);
 });

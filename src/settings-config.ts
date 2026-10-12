@@ -2,9 +2,10 @@ export const settingDefaults = {
   AGENT_PROVIDER: "openai", AGENT_MODEL: "gpt-4.1-mini",
   STT_PROVIDER: "auto", HOTKEY: "Alt+Space", CHECKPOINT_HOTKEY: "Alt+1",
   SUMMARY_HOTKEY: "Alt+2", BRIEFING_HOTKEY: "Alt+3", SCREENSHOT_HOTKEY: "Alt+Shift+Space",
+  STEALTH_HOTKEY: "Alt+Shift+S",
 };
 export const secretKeys = ["AGENT_API_KEY", "STT_PROVIDER_API_KEY"] as const;
-export const shortcutKeys = ["HOTKEY", "CHECKPOINT_HOTKEY", "SUMMARY_HOTKEY", "BRIEFING_HOTKEY", "SCREENSHOT_HOTKEY"] as const;
+export const shortcutKeys = ["HOTKEY", "CHECKPOINT_HOTKEY", "SUMMARY_HOTKEY", "BRIEFING_HOTKEY", "SCREENSHOT_HOTKEY", "STEALTH_HOTKEY"] as const;
 export type Settings = typeof settingDefaults;
 export type SettingsInput = Settings & { AGENT_API_KEY?: string; STT_PROVIDER_API_KEY?: string };
 

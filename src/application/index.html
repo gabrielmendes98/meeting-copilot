@@ -22,6 +22,7 @@
     <div id="notice" role="status" hidden></div>
     <section id="page-meeting" class="page">
       <div id="configuration-banner" class="banner" hidden><span id="configuration-message"></span><button data-open-settings>Open settings →</button></div>
+      <article class="settings-card stealth-card"><div class="settings-heading"><h2>Stealth mode</h2><p>Hide the app from the Dock, Cmd+Tab, and menu bar. Keep replies in the floating overlay and use your shortcuts to control the copilot.</p></div><p class="stealth-warning">Screen-share protection is best effort. On macOS, full-screen sharing in Meet, Slack, or Teams may still show the overlay. Share a specific app window and verify the viewer’s screen before relying on it.</p><div class="context-text-footer"><small id="stealth-hint">Press Option+Shift+S to restore the app. Restarting also restores normal mode.</small><button id="enter-stealth" class="secondary" data-action="stealth">Enter stealth mode <kbd id="stealth-shortcut">⌥ ⇧ S</kbd></button></div></article>
       <div class="session-card">
         <div class="session-intro"><div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><h2 id="session-title">Ready for your next meeting</h2><p id="session-description">Capture the conversation from your meeting app.</p></div></div>
         <button id="capture" class="primary" data-action="capture">Start listening <kbd id="record-shortcut">⌥ Space</kbd></button>
@@ -58,7 +59,7 @@
           <label id="stt-key-field">Transcription API key<input name="STT_PROVIDER_API_KEY" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter your transcription API key" /><small id="stt-key-hint">Stored encrypted on this Mac.</small></label>
         </div>
         <div class="settings-card"><div class="settings-heading"><h2>Keyboard shortcuts</h2><p>Available even when your application window is closed. Use Alt for Option and Command for ⌘.</p></div>
-          <div class="shortcut-grid"><label>Start / stop listening<input name="HOTKEY" required /></label><label>Answer latest question<input name="CHECKPOINT_HOTKEY" required /></label><label>Summarize<input name="SUMMARY_HOTKEY" required /></label><label>Meeting notes<input name="BRIEFING_HOTKEY" required /></label><label>Screenshot<input name="SCREENSHOT_HOTKEY" required /></label></div>
+          <div class="shortcut-grid"><label>Start / stop listening<input name="HOTKEY" required /></label><label>Answer latest question<input name="CHECKPOINT_HOTKEY" required /></label><label>Summarize<input name="SUMMARY_HOTKEY" required /></label><label>Meeting notes<input name="BRIEFING_HOTKEY" required /></label><label>Screenshot<input name="SCREENSHOT_HOTKEY" required /></label><label>Toggle stealth / restore app<input name="STEALTH_HOTKEY" required /></label></div>
         </div>
         <div class="save-bar"><span id="save-hint">Changes apply immediately after saving.</span><button type="submit" id="save-settings" class="primary">Save settings</button></div>
       </form>

@@ -4,6 +4,7 @@ const text = document.getElementById("text");
 
 const labels = {
   hidden: "Ready",
+  idle: "Ready",
   recording: "Recording",
   transcribing: "Transcribing",
   thinking: "Thinking",
@@ -34,6 +35,7 @@ function render(state) {
   card.dataset.status = state.status;
   pill.textContent = state.label || labels[state.status] || state.status;
   text.textContent = state.text || "";
+  document.getElementById("overlay-hint").textContent = state.stealth ? `${state.exitShortcut} restores app · Click to dismiss · Capture protection is best effort` : "Esc or click to dismiss";
   fitWindow();
 }
 

@@ -9,3 +9,4 @@ main{flex:1;min-width:0;overflow-y:auto}.titlebar{height:58px;position:sticky;to
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 
 textarea{font:inherit;width:100%;border:1px solid #dce2ef;border-radius:7px;background:#fbfcff;padding:12px;font-size:13px;color:#34415e;resize:vertical;min-height:120px;line-height:1.6}textarea:focus-visible{outline:3px solid var(--logo-blue);outline-offset:3px}.context-text-footer{display:flex;justify-content:space-between;align-items:center;gap:16px}.context-text-footer small{font-size:11px;color:var(--muted);line-height:1.5}.file-error{color:#884738}.context-empty{padding:32px 20px}
+.stealth-warning{font-size:12px;line-height:1.7;color:#79613b;background:#fff8e9;border:1px solid #e9d9b8;border-radius:8px;padding:12px;margin:0 0 16px}.stealth-card .settings-heading p{margin-bottom:12px}.stealth-card kbd{margin-left:8px}

@@ -32,6 +32,7 @@ import {
   missingAgentKeys,
   screenshotHotkey,
   summaryHotkey,
+  stealthHotkey,
 } from "./env";
 import { captureRegion } from "./screenshot";
 import { transcription, transcribeWav, resetTranscription, pickProvider } from "./transcribe";
@@ -48,6 +49,9 @@ let latestReply = "";
 let startupError = "";
 let tray: Tray | null = null;
 let busy = false;
+let stealth = false;
+let stealthTransition = false;
+let stealthShortcutRegistered = false;
 const capture = new SystemAudioCapture();
 
 function overlayPath(): string {
@@ -59,7 +63,7 @@ function listeningActive(): boolean {
 }
 
 function sendState(status: OverlayStatus, text = "", label?: string): void {
-  const state: OverlayState = { status, text, label };
+  const state: OverlayState = { status, text, label, stealth, exitShortcut: displayHotkey(stealthHotkey()) };
   currentState = state;
   if (status === "answer") latestReply = text;
   publishAppState();
@@ -112,7 +116,7 @@ function appState() {
     if (missing.length) configurationError ||= "Add your API keys in Settings to get started.";
   } catch (err) { configurationError = err instanceof Error ? err.message : String(err); }
   return { overlay: currentState, latestReply, busy, listening: listeningActive(),
-    live, settings: publicSettings(), configurationError };
+    live, settings: publicSettings(), configurationError, stealth, stealthAvailable: process.platform === "darwin" && stealthShortcutRegistered };
 }
 
 function setBusy(value: boolean): void {
@@ -125,6 +129,7 @@ function publishAppState(): void {
 }
 
 function openApplication(): void {
+  if (stealth || stealthTransition) return;
   if (!mainWindow) {
     mainWindow = new BrowserWindow({
       width: 1120, height: 780, minWidth: 900, minHeight: 650,
@@ -141,6 +146,60 @@ function openApplication(): void {
   mainWindow.focus();
 }
 
+async function setStealthMode(enabled: boolean): Promise<void> {
+  if (stealthTransition || enabled === stealth) return;
+  if (process.platform !== "darwin") throw new Error("Stealth mode currently supports macOS only.");
+  if (enabled && !stealthShortcutRegistered) throw new Error("Configure an available stealth shortcut in Settings before enabling stealth mode.");
+  stealthTransition = true;
+  try {
+    // Protect both windows before changing visibility. This is best effort on macOS.
+    if (enabled) {
+      mainWindow?.setContentProtection(true);
+      overlay?.setContentProtection(true);
+      overlay?.setFocusable(false);
+      mainWindow?.setSkipTaskbar(true);
+      stealth = true;
+      mainWindow?.hide();
+      tray?.destroy(); tray = null;
+      app.setActivationPolicy("accessory");
+      app.dock?.hide();
+      if (!overlay) overlay = createOverlay();
+      if (currentState.status === "hidden") {
+        sendState("idle", `Stealth mode is on. ${displayHotkey(stealthHotkey())} restores the app.\n${displayHotkey(hotkey())} starts or stops listening. Screen-share invisibility is not guaranteed.`, "Stealth");
+      } else { sendState(currentState.status, currentState.text, currentState.label); }
+    } else {
+      try {
+        app.setActivationPolicy("regular");
+        await app.dock?.show();
+      } catch (error) {
+        app.setActivationPolicy("accessory");
+        app.dock?.hide();
+        throw error;
+      }
+      mainWindow?.setContentProtection(false);
+      overlay?.setContentProtection(false);
+      overlay?.setFocusable(true);
+      mainWindow?.setSkipTaskbar(false);
+      stealth = false;
+      if (!tray) createTray();
+      refreshTray();
+      if (currentState.status === "idle") hideOverlay();
+      else sendState(currentState.status, currentState.text, currentState.label);
+    }
+  } finally { stealthTransition = false; publishAppState(); }
+  if (!enabled) openApplication();
+}
+
+function toggleStealthMode(): void {
+  void setStealthMode(!stealth).catch((error) => {
+    sendState("error", error instanceof Error ? error.message : String(error));
+  });
+}
+
+function hotkeyHandlers(): Array<() => void> {
+  return [() => { void toggleCapture(); }, () => runTranscriptAction("checkpoint"), () => runTranscriptAction("summary"), () => runTranscriptAction("briefing"), () => { void toggleScreenshot(); }, toggleStealthMode];
+}
+
 function registerApplicationIpc(): void {
   function authorize(event: Electron.IpcMainInvokeEvent): void {
     if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error("Unauthorized window.");
@@ -148,6 +207,7 @@ function registerApplicationIpc(): void {
   ipcMain.handle("app-state", (event) => { authorize(event); return appState(); });
   ipcMain.handle("app-action", async (event, action: string) => {
     authorize(event);
+    if (action === "stealth") { await setStealthMode(!stealth); return; }
     if (busy) return;
     if (action === "capture") await toggleCapture();
     else if (action === "screenshot") await toggleScreenshot();
@@ -157,16 +217,18 @@ function registerApplicationIpc(): void {
   });
   ipcMain.handle("app-save-settings", async (event, input: unknown) => {
     authorize(event);
+    if (stealth || stealthTransition) throw new Error("Turn off stealth mode before changing settings.");
     if (busy || listeningActive()) throw new Error("Stop listening and wait for the current action before changing settings.");
     const settings = validateSettings(input);
     const previous = Object.fromEntries(shortcutKeys.map((key) => [key, process.env[key]]));
     globalShortcut.unregisterAll();
     try {
-      const handlers = [() => { void toggleCapture(); }, () => runTranscriptAction("checkpoint"), () => runTranscriptAction("summary"), () => runTranscriptAction("briefing"), () => { void toggleScreenshot(); }];
+      const handlers = hotkeyHandlers();
       shortcutKeys.forEach((key, index) => {
         if (!globalShortcut.register(settings[key], handlers[index])) throw new Error(`Cannot register ${settings[key]}. Choose a different shortcut.`);
       });
       saveSettings(settings);
+      stealthShortcutRegistered = true;
     } catch (err) {
       globalShortcut.unregisterAll();
       for (const [key, value] of Object.entries(previous)) {
@@ -186,7 +248,7 @@ function registerApplicationIpc(): void {
   ipcMain.handle("app-context-list", (event) => { authorize(event); return listContextFiles(); });
   ipcMain.handle("app-context-text-get", (event) => { authorize(event); return getContextText(); });
   ipcMain.handle("app-context-text-save", (event, text: unknown) => { authorize(event); return saveContextText(text); });
-  ipcMain.handle("app-context-add", async (event) => { authorize(event); return addContextFiles(mainWindow!); });
+  ipcMain.handle("app-context-add", async (event) => { authorize(event); if (stealth || stealthTransition) throw new Error("Turn off stealth mode before importing documents."); return addContextFiles(mainWindow!); });
   ipcMain.handle("app-context-remove", (event, id: string) => { authorize(event); if (typeof id !== "string") throw new Error("Invalid file."); return removeContextFile(id); });
 }
 
@@ -246,9 +308,12 @@ function createOverlay(): BrowserWindow {
       nodeIntegration: false,
     },
   });
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  win.setContentProtection(stealth);
+  win.setFocusable(!stealth);
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: stealth });
   win.setAlwaysOnTop(true, "screen-saver");
   win.loadFile(overlayPath());
+  win.webContents.on("did-finish-load", () => { win.webContents.send("overlay-state", currentState); });
   win.on("closed", () => {
     overlay = null;
   });
@@ -258,6 +323,7 @@ function createOverlay(): BrowserWindow {
 function trayTemplate(): MenuItemConstructorOptions[] {
   return [
     { label: "Open Meeting Copilot", click: openApplication },
+    { label: `Enter stealth mode: ${displayHotkey(stealthHotkey())}`, enabled: stealthShortcutRegistered, click: toggleStealthMode },
     { label: `Record: ${displayHotkey(hotkey())}`, enabled: false },
     { label: `Answer: ${displayHotkey(checkpointHotkey())}`, enabled: false },
     { label: `Summary: ${displayHotkey(summaryHotkey())}`, enabled: false },
@@ -453,7 +519,7 @@ async function toggleScreenshot(): Promise<void> {
     const applicationWasVisible = mainWindow?.isVisible();
     if (applicationWasVisible) mainWindow?.hide();
     try { pngPath = await captureRegion(); }
-    finally { if (applicationWasVisible) mainWindow?.show(); }
+    finally { if (applicationWasVisible && !stealth && !stealthTransition) mainWindow?.show(); }
     if (!pngPath) return;
     sendState("thinking", "Reading the screenshot…");
     const answer = await askFromScreenshot(pngPath, (full) => {
@@ -487,7 +553,7 @@ function checkConfiguration(agentOnly = false): boolean {
   }
 }
 
-function registerHotkey(accelerator: string, handler: () => void): void {
+function registerHotkey(accelerator: string, handler: () => void): boolean {
   const ok = globalShortcut.register(accelerator, handler);
   if (!ok) {
     sendState(
@@ -495,6 +561,7 @@ function registerHotkey(accelerator: string, handler: () => void): void {
       `Could not register hotkey ${accelerator}. Close any app using the same shortcut.`,
     );
   }
+  return ok;
 }
 
 function registerHotkeys(): void {
@@ -513,6 +580,8 @@ function registerHotkeys(): void {
   registerHotkey(screenshotHotkey(), () => {
     void toggleScreenshot();
   });
+  stealthShortcutRegistered = registerHotkey(stealthHotkey(), toggleStealthMode);
+  refreshTray();
 }
 
 app.setName("Meeting Copilot");

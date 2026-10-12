@@ -39,6 +39,10 @@ export function briefingHotkey(): string {
   return process.env.BRIEFING_HOTKEY?.trim() || "Alt+3";
 }
 
+export function stealthHotkey(): string {
+  return process.env.STEALTH_HOTKEY?.trim() || "Alt+Shift+S";
+}
+
 export function missingKeys(): string[] {
   return [...new Set([...missingAgentKeys(), ...missingTranscriptionKeys()])];
 }

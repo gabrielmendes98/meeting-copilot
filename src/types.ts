@@ -1,5 +1,6 @@
 export type OverlayStatus =
   | "hidden"
+  | "idle"
   | "recording"
   | "transcribing"
   | "thinking"
@@ -10,6 +11,8 @@ export type OverlayState = {
   status: OverlayStatus;
   text: string;
   label?: string;
+  stealth?: boolean;
+  exitShortcut?: string;
 };
 
 export type CopilotApi = {

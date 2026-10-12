@@ -82,6 +82,10 @@ With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
 
    **Context library** accepts multiple PDF, DOCX, TXT, Markdown, CSV, and JSON documents together, plus freeform text in **Direct context**. Click **Save text** to apply or clear your notes. Readable document text is extracted locally and saved between launches; all ready documents and saved notes are sent together to the selected AI provider with every answer, summary, briefing, and screenshot request. Imported documents are snapshots: remove and re-add to update them. Removing an entry leaves the original file intact. Files can be up to 20 MB each, with a combined limit of 120,000 characters for documents and notes; content is never silently truncated. Failed imports display a reason and are excluded, while other documents remain usable. Scanned PDFs need OCR first, and password-protected or invalid documents may not be readable. Existing file references remain usable as long as their originals are accessible; re-import them to save a snapshot.
 
+   **Stealth mode** (macOS): use **Enter stealth mode** on the Meeting page, the menu-bar action, or `Option+Shift+S`. The workspace hides, the Dock / Cmd+Tab entry and menu-bar icon disappear, and the floating reply overlay stays visible locally. All meeting hotkeys continue working. Press `Option+Shift+S` again to restore the workspace, Dock, and menu-bar icon, including while an agent is busy. Change this shortcut in Settings (`STEALTH_HOTKEY` in `.env`); stealth is unavailable if the restore shortcut cannot be registered. Clicking a reply dismisses the overlay without exiting stealth. Reopening the application while stealth is active does not reveal the workspace. Stealth is not persisted: restarting returns to normal mode.
+
+   Screen-share exclusion is **best effort**, not a guarantee of invisibility in Google Meet, Slack, or Microsoft Teams. Stealth uses Electron’s `setContentProtection(true)` on both app windows; [Electron documents that macOS ScreenCaptureKit can still capture protected windows](https://www.electronjs.org/docs/latest/api/browser-window#winsetcontentprotectionenable-macos-windows). Share a specific meeting/application window and verify the remote view before relying on exclusion. Native permission prompts and the screenshot selection interface are not protected app windows. To quit from Terminal while hidden, find the main process with `pgrep -fl 'Meeting Copilot|Electron'`, then run `kill <PID>` using the main app PID. When using `npm run dev` or `npm start`, you can also stop the launch terminal with Ctrl+C.
+
 2. `Option+Space` starts **continuous** listening. The overlay shows **Recording**. Esc hides the overlay; listening keeps going (a ● stays in the menu bar).
 3. While listening:
    - `Option+1` checkpoints: transcribes the latest audio and asks for a spoken English reply to the last question, using the whole call as context.
@@ -99,6 +103,7 @@ Shortcuts are configurable in **Settings** or initially in `.env`. In Electron, 
 | Answer last question   | `CHECKPOINT_HOTKEY=Alt+1` |
 | Summary                | `SUMMARY_HOTKEY=Alt+2`    |
 | Summary + notes        | `BRIEFING_HOTKEY=Alt+3`   |
+| Toggle stealth / restore app | `STEALTH_HOTKEY=Alt+Shift+S` |
 
 ## Screenshot questions
 
@@ -161,5 +166,4 @@ Changing `app.setName()` alone cannot change the operating system's app name ([E
 
 #### To do
 
-- Implement stealth mode
 - In our settings, the "model" input should be a "select" component, with pre-defined agent IDs. This way the user does not need to know the ID of the agent.
