@@ -51,7 +51,7 @@
       <div class="page-heading"><div><h1>Settings</h1><p class="subtitle">Choose how your copilot listens and thinks.</p></div></div>
       <form id="settings-form">
         <div class="settings-card"><div class="settings-heading"><h2>AI agent</h2><p>The service that generates your answers and meeting notes.</p></div>
-          <div class="form-grid"><label>Provider<select name="AGENT_PROVIDER"><option value="openai">OpenAI</option><option value="cursor">Cursor</option></select></label><label>Model<input name="AGENT_MODEL" required maxlength="200" spellcheck="false" /></label></div>
+          <div class="form-grid"><label>Provider<select name="AGENT_PROVIDER"><option value="openai">OpenAI</option><option value="cursor">Cursor</option></select></label><label>Model<select name="AGENT_MODEL" required aria-describedby="model-hint"><option value="gpt-4.1-mini">GPT-4.1 mini (Default)</option></select><small id="model-hint">Model choices update for your selected provider. Availability depends on your account.</small></label></div>
           <label>API key<input name="AGENT_API_KEY" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter your agent API key" /><small id="agent-key-hint">Stored encrypted on this Mac.</small></label>
         </div>
         <div class="settings-card"><div class="settings-heading"><h2>Transcription</h2><p>macOS listens continuously. Cloud services transcribe recorded clips.</p></div>

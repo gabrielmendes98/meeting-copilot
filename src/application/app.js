@@ -1,6 +1,36 @@
 const api = window.meetingCopilot;
 const $ = (id) => document.getElementById(id);
 const form = $("settings-form");
+// Curated choices supported by the adapters; IDs stay in option values.
+const agentModels = {
+  openai: [
+    { id: "gpt-4.1-mini", name: "GPT-4.1 mini (Default)" },
+    { id: "gpt-4.1", name: "GPT-4.1" },
+    { id: "gpt-4o-mini", name: "GPT-4o mini" },
+    { id: "gpt-4o", name: "GPT-4o" },
+  ],
+  cursor: [
+    { id: "composer-2.5", name: "Composer 2.5 (Default)" },
+    { id: "auto", name: "Automatic" },
+  ],
+};
+const modelSelections = {};
+let modelProvider = "openai";
+function populateModels(provider, selected) {
+  const select = form.elements.AGENT_MODEL;
+  const choices = agentModels[provider] || agentModels.openai;
+  select.replaceChildren();
+  for (const model of choices) {
+    const option = document.createElement("option");
+    option.value = model.id; option.textContent = model.name; select.append(option);
+  }
+  // Preserve existing .env or saved custom models without silently replacing them.
+  if (selected && !choices.some(model => model.id === selected)) {
+    const option = document.createElement("option");
+    option.value = selected; option.textContent = "Previously configured model"; select.append(option);
+  }
+  select.value = selected || choices[0].id;
+}
 let state;
 let saving = false;
 let files = [];
@@ -27,6 +57,9 @@ function showPage(page) {
 function shortcut(value) { return value.replace(/CommandOrControl|CmdOrCtrl|Command|Cmd/gi, "⌘").replace(/Control|Ctrl/gi, "⌃").replace(/Option|Alt/gi, "⌥").replace(/Shift/gi, "⇧").replaceAll("+", " "); }
 function populateSettings(settings) {
   for (const [key, value] of Object.entries(settings.values)) { if (form.elements[key]) form.elements[key].value = value; }
+  modelProvider = settings.values.AGENT_PROVIDER;
+  modelSelections[modelProvider] = settings.values.AGENT_MODEL;
+  populateModels(modelProvider, settings.values.AGENT_MODEL);
   form.elements.AGENT_API_KEY.value = "";
   form.elements.STT_PROVIDER_API_KEY.value = "";
   $("agent-key-hint").textContent = settings.hasAgentKey ? "A key is configured. Leave blank to keep it, or enter a replacement. Keys are saved encrypted on this Mac." : "Keys are saved encrypted on this Mac.";
@@ -109,8 +142,9 @@ $("context-text-form").addEventListener("submit", async (event) => {
 });
 form.elements.STT_PROVIDER.addEventListener("change", updateSpeechField);
 form.elements.AGENT_PROVIDER.addEventListener("change", () => {
-  const input = form.elements.AGENT_MODEL;
-  if (["gpt-4.1-mini", "composer-2.5"].includes(input.value)) input.value = form.elements.AGENT_PROVIDER.value === "cursor" ? "composer-2.5" : "gpt-4.1-mini";
+  modelSelections[modelProvider] = form.elements.AGENT_MODEL.value;
+  modelProvider = form.elements.AGENT_PROVIDER.value;
+  populateModels(modelProvider, modelSelections[modelProvider]);
 });
 form.addEventListener("submit", async (event) => {
   event.preventDefault(); saving = true; $("save-settings").disabled = true;
