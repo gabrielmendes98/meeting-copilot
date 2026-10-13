@@ -9,9 +9,11 @@ export let transcription = new TranscriptionService(createTranscriptionProvider)
 
 export async function resetTranscription(): Promise<void> {
   const onUnexpectedExit = transcription.onUnexpectedExit;
+  const onTranscript = transcription.onTranscript;
   await transcription.dispose();
   transcription = new TranscriptionService(createTranscriptionProvider);
   transcription.onUnexpectedExit = onUnexpectedExit;
+  transcription.onTranscript = onTranscript;
 }
 
 // Preserve the existing facade for callers of the clip transcription API.

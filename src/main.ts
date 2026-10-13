@@ -47,6 +47,9 @@ let overlay: BrowserWindow | null = null;
 let mainWindow: BrowserWindow | null = null;
 let currentState: OverlayState = { status: "hidden", text: "" };
 let latestReply = "";
+let liveTranscript = "";
+let watchingTranscriptStart = false;
+let transcriptUpdatedDuringStart = false;
 let startupError = "";
 let tray: Tray | null = null;
 let busy = false;
@@ -122,7 +125,7 @@ function appState() {
     const missing = missingKeys();
     if (missing.length) configurationError ||= "Add your API keys in Settings to get started.";
   } catch (err) { configurationError = err instanceof Error ? err.message : String(err); }
-  return { overlay: currentState, latestReply, busy, listening: listeningActive(),
+  return { overlay: currentState, latestReply, transcript: liveTranscript, busy, listening: listeningActive(),
     live, settings: publicSettings(), configurationError, stealth, stealthAvailable: process.platform === "darwin" && stealthShortcutRegistered };
 }
 
@@ -468,15 +471,22 @@ async function toggleLiveListening(): Promise<void> {
   if (busy) return;
 
   if (!transcription.active) {
+    const previousTranscript = liveTranscript;
+    transcriptUpdatedDuringStart = false;
+    watchingTranscriptStart = true;
+    liveTranscript = "";
+    publishAppState();
     sendState("recording", `Listening… ${listeningHint()}.`);
     setBusy(true);
     try {
       await transcription.start();
       refreshTray();
     } catch (err) {
+      if (!transcriptUpdatedDuringStart) liveTranscript = previousTranscript;
       refreshTray();
       sendState("error", err instanceof Error ? err.message : String(err));
     } finally {
+      watchingTranscriptStart = false;
       setBusy(false);
     }
     return;
@@ -677,6 +687,11 @@ if (!gotLock) {
     transcription.onUnexpectedExit = (err) => {
       refreshTray();
       sendState("error", err.message);
+    };
+    transcription.onTranscript = (text) => {
+      if (watchingTranscriptStart) transcriptUpdatedDuringStart = true;
+      liveTranscript = text;
+      publishAppState();
     };
     ipcMain.on("overlay-dismiss", (event) => { if (event.sender === overlay?.webContents) dismissOverlay(); });
     ipcMain.on("overlay-height", (_event, height: number) => {

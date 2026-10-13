@@ -56,6 +56,7 @@ export class MacosLiveSession implements LiveTranscriptionSession {
   private speechJsonWaiter: JsonWaiter | null = null;
   private stopping = false;
   onUnexpectedExit: ((err: Error) => void) | null = null;
+  onTranscript: ((text: string) => void) | null = null;
 
   get active(): boolean {
     return this.capture !== null || this.speech !== null;
@@ -329,6 +330,7 @@ export class MacosLiveSession implements LiveTranscriptionSession {
           this.transcript = this.transcript
             ? `${this.transcript} ${result.text}`
             : result.text;
+          this.onTranscript?.(this.transcript.trim());
         }
       }
     } finally {

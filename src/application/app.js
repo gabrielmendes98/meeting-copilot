@@ -67,6 +67,20 @@ function populateSettings(settings) {
   updateSpeechField();
 }
 function updateSpeechField() { $("stt-key-field").hidden = form.elements.STT_PROVIDER.value === "macos"; }
+function renderTranscript() {
+  const body = $("transcript");
+  const text = typeof state.transcript === "string" ? state.transcript.trim() : "";
+  const visible = Boolean(state.live && text);
+  const distanceFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
+  body.textContent = visible
+    ? text
+    : state.live
+      ? "Start listening from Meeting. Recognized speech will appear here and stay until the next meeting starts."
+      : "Live transcription needs the macOS speech provider. Choose it in Settings.";
+  body.classList.toggle("empty", !visible);
+  if (visible && distanceFromBottom <= 48) body.scrollTop = body.scrollHeight;
+  $("copy-transcript").disabled = !visible;
+}
 function render(next) {
   state = next;
   const { listening, busy, live, overlay, settings } = next;
@@ -91,6 +105,7 @@ function render(next) {
   $("reply").classList.toggle("empty", !text);
   $("reply-heading").textContent = isError ? "Something needs attention" : busy ? "Your copilot is working…" : "Your copilot’s response";
   $("copy-reply").disabled = !next.latestReply;
+  renderTranscript();
   $("save-settings").disabled = busy || listening || saving;
   $("save-hint").textContent = listening ? "Stop listening before saving settings." : busy ? "Wait for the current action to finish." : "Changes apply immediately after saving.";
 }
@@ -117,6 +132,7 @@ document.querySelectorAll("[data-page]").forEach((button) => button.addEventList
 document.querySelectorAll("[data-open-settings]").forEach((button) => button.addEventListener("click", () => showPage("settings")));
 document.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", async () => { try { await api.action(button.dataset.action); } catch (error) { notify(error.message, true); } }));
 $("copy-reply").addEventListener("click", async () => { try { await navigator.clipboard.writeText(state.latestReply); notify("Response copied."); } catch { notify("Could not copy the response.", true); } });
+$("copy-transcript").addEventListener("click", async () => { try { await navigator.clipboard.writeText(state.transcript); notify("Transcript copied."); } catch { notify("Could not copy the transcript.", true); } });
 async function addFiles() {
   $("add-context").disabled = $("add-context-empty").disabled = true;
   $("add-context").textContent = "Importing…";

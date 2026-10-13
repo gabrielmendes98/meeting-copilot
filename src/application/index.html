@@ -12,6 +12,7 @@
     <div class="brand"><img class="brand-icon" src="../assets/app.png" alt="" width="34" height="34" /><div>Meeting Copilot<small>Your meeting companion</small></div></div>
     <nav aria-label="Main navigation">
       <button class="nav-button active" data-page="meeting" aria-current="page"><span aria-hidden="true">◉</span> Meeting</button>
+      <button class="nav-button" data-page="transcript"><span aria-hidden="true">✎</span> Transcript</button>
       <button class="nav-button" data-page="context"><span aria-hidden="true">▤</span> Context library <span class="count" id="context-count">0</span></button>
       <button class="nav-button" data-page="settings"><span aria-hidden="true">⚙</span> Settings</button>
     </nav>
@@ -34,6 +35,10 @@
       </div>
       <article class="reply-card"><div class="card-heading"><h2 id="reply-heading">Your copilot’s response</h2><button id="copy-reply" class="text-button" disabled>Copy response</button></div><div id="reply" class="reply empty">Start listening, then ask your copilot for an answer or summary.<br>Your response will appear here and in the floating overlay.</div></article>
       <div class="meeting-footer"><span>Something on your screen?</span><button class="text-button" data-action="screenshot">Ask from a screenshot <kbd id="screenshot-shortcut">⌥ ⇧ Space</kbd></button></div>
+    </section>
+    <section id="page-transcript" class="page" hidden>
+      <div class="page-heading"><div><h1>Transcript</h1><p class="subtitle">What macOS has heard in this meeting.</p></div></div>
+      <article class="reply-card"><div class="card-heading"><h2>Live transcript</h2><button id="copy-transcript" class="text-button" disabled>Copy transcript</button></div><div id="transcript" class="reply transcript-body empty">Start listening from Meeting. Recognized speech will appear here and stay until the next meeting starts.</div></article>
     </section>
     <section id="page-context" class="page" hidden>
       <div class="page-heading"><div><h1>Context library</h1><p class="subtitle">Give your copilot the bigger picture.</p></div><button id="add-context" class="primary">＋ Add files</button></div>

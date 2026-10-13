@@ -170,7 +170,7 @@ test('macOS adapter owns its live session and disposes it', async () => {
 test('service shares initialization, supports live lifecycle, and forwards exit errors', async () => {
   let creates = 0, disposed = 0;
   const live = {
-    active: false, onUnexpectedExit: null,
+    active: false, onUnexpectedExit: null, onTranscript: null,
     async start() { this.active = true; },
     async stop() { this.active = false; },
     async flushAndTranscript() { return 'Whole call'; },
@@ -187,7 +187,11 @@ test('service shares initialization, supports live lifecycle, and forwards exit 
   assert.equal(service.active, false);
   assert.deepEqual(await Promise.all([service.transcribe('one.wav'), service.transcribe('two.wav')]), ['one.wav', 'two.wav']);
   assert.equal(creates, 1);
+  let heard;
+  service.onTranscript = text => { heard = text; };
   await service.start();
+  live.onTranscript('Hello there');
+  assert.equal(heard, 'Hello there');
   assert.equal(service.active, true);
   assert.equal(await service.flushAndTranscript(), 'Whole call');
   let received;
@@ -198,12 +202,27 @@ test('service shares initialization, supports live lifecycle, and forwards exit 
   await service.stop();
   assert.equal(service.active, false);
   await service.start();
+  live.onTranscript('Second session');
+  assert.equal(heard, 'Second session');
   const closing = service.dispose();
   assert.equal(live.active, false, 'shutdown must stop the live helper immediately');
   await closing;
   await service.dispose();
   assert.equal(disposed, 1);
   await assert.rejects(service.transcribe('clip.wav'), /disposed/);
+});
+
+test('resetTranscription keeps live callbacks on the replacement service', async () => {
+  const { transcription, resetTranscription } = require('../dist/transcribe');
+  const onExit = () => {};
+  const onTranscript = () => {};
+  transcription.onUnexpectedExit = onExit;
+  transcription.onTranscript = onTranscript;
+  await resetTranscription();
+  const next = require('../dist/transcribe').transcription;
+  assert.equal(next.onUnexpectedExit, onExit);
+  assert.equal(next.onTranscript, onTranscript);
+  await next.dispose();
 });
 
 test('service retries factory failures and rejects unavailable live capability', async () => {

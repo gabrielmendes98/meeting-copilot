@@ -7,7 +7,7 @@ const { settingDefaults, shortcutKeys } = require('../dist/settings-config');
 
 test('Dock lifecycle and settings IPC enforce trusted senders and roll back shortcut conflicts', async () => {
   const windows = [], trays = [], events = {}, handlers = {}, shortcuts = new Map();
-  let saves = 0, resets = 0, listening = false, dockShown = false, activationPolicy;
+  let saves = 0, resets = 0, listening = false, dockShown = false, activationPolicy, failStart = false, announceDuringStart = "";
   const environment = { OVERLAY_OPACITY: '60' };
   class Window {
     constructor(options) {
@@ -38,7 +38,15 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
     setActivationPolicy: (value) => { activationPolicy = value; },
     dock: { async show() { dockShown = true; }, hide() { dockShown = false; }, setIcon() {} },
   };
-  const transcription = { get active() { return listening; }, supportsLive: true, async dispose() {}, async stop() { listening = false; } };
+  const transcription = {
+    get active() { return listening; }, supportsLive: true, onTranscript: null,
+    async dispose() {}, async stop() { listening = false; },
+    async start() {
+      if (announceDuringStart && this.onTranscript) this.onTranscript(announceDuringStart);
+      if (failStart) throw new Error('could not listen');
+      listening = true;
+    },
+  };
   const dependencies = {
     electron: {
       app, BrowserWindow: Window, clipboard: {}, ipcMain: { handle: (name, handler) => { handlers[name] = handler; }, on() {} },
@@ -105,6 +113,7 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.equal(handlers['app-state'](event).stealth, true);
   assert.equal(handlers['app-state'](event).busy, true);
   assert.equal(handlers['app-state'](event).latestReply, '');
+  assert.equal(handlers['app-state'](event).transcript, '');
   assert.equal(main.visible, false);
   assert.equal(main.skipTaskbar, true);
   assert.equal(main.protected, true);
@@ -180,6 +189,23 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.equal(main.visible, true);
   assert.equal(dockShown, true);
   delete environment.STEALTH_HOTKEY; shortcuts.clear(); sandbox.registerHotkeysForTest();
+  transcription.onTranscript('Hello there');
+  assert.equal(handlers['app-state'](event).transcript, 'Hello there');
+  await handlers['app-action'](event, 'capture');
+  assert.equal(listening, true);
+  assert.equal(handlers['app-state'](event).transcript, '');
+  transcription.onTranscript('Kept after stop');
+  await handlers['app-action'](event, 'capture');
+  assert.equal(listening, false);
+  assert.equal(handlers['app-state'](event).transcript, 'Kept after stop');
+  failStart = true;
+  await handlers['app-action'](event, 'capture');
+  assert.equal(listening, false);
+  assert.equal(handlers['app-state'](event).transcript, 'Kept after stop');
+  announceDuringStart = 'Partial';
+  await handlers['app-action'](event, 'capture');
+  assert.equal(listening, false);
+  assert.equal(handlers['app-state'](event).transcript, 'Partial');
   main.destroyed = true; main.events.closed();
   events.activate();
   assert.equal(windows.length, 3);
