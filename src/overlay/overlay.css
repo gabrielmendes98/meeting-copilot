@@ -24,17 +24,29 @@ body {
   display: flex;
   flex-direction: column;
   border-radius: 16px;
-  background: rgba(18, 18, 22, 0.88);
+  position: relative;
+  isolation: isolate;
+  -webkit-app-region: no-drag;
+  cursor: default;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgb(18, 18, 22);
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  backdrop-filter: blur(18px);
-  -webkit-app-region: no-drag;
-  cursor: pointer;
+  opacity: var(--background-opacity, 1);
 }
 
 .card.hidden {
   display: none;
 }
+
+.card.click-through { cursor: default; }
 
 .row {
   display: flex;
@@ -42,6 +54,8 @@ body {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
+  flex-wrap: wrap;
+  opacity: var(--text-opacity, 1);
 }
 
 .pill {
@@ -71,12 +85,13 @@ body {
   background: rgba(200, 110, 20, 0.3);
 }
 
-.hint {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
-}
+.shortcuts { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.shortcut-item { display: inline-flex; align-items: center; gap: 5px; color: #f4f4f7; border: 1px solid #ffffff24; border-radius: 6px; padding: 4px 6px; font-size: 11px; }
+.shortcut-item kbd { font: 500 12px -apple-system, BlinkMacSystemFont, sans-serif; letter-spacing: 1px; }
+[hidden] { display: none !important; }
 
 .text {
+  opacity: var(--text-opacity, 1);
   font-size: 20px;
   line-height: 1.4;
   color: #f4f4f7;

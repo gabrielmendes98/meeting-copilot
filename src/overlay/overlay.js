@@ -2,6 +2,11 @@ const card = document.getElementById("card");
 const pill = document.getElementById("pill");
 const text = document.getElementById("text");
 
+function macShortcut(accelerator) {
+  const symbols = { alt: "⌥", option: "⌥", shift: "⇧", control: "⌃", ctrl: "⌃", command: "⌘", cmd: "⌘", commandorcontrol: "⌘", cmdorctrl: "⌘", space: "␣", return: "↩", enter: "↩", escape: "⎋", esc: "⎋", left: "←", right: "→", up: "↑", down: "↓", tab: "⇥", backspace: "⌫", delete: "⌦", plus: "+" };
+  return accelerator.split("+").map(key => symbols[key.toLowerCase()] || key.toUpperCase()).join("");
+}
+
 const labels = {
   hidden: "Ready",
   idle: "Ready",
@@ -25,6 +30,9 @@ function fitWindow() {
 
 function render(state) {
   if (!card || !pill || !text) return;
+  const opacity = Math.min(1, Math.max(0.3, state.opacity ?? 1));
+  card.style.setProperty("--background-opacity", String(opacity));
+  card.style.setProperty("--text-opacity", String(Math.min(1, opacity * 2)));
   if (state.status === "hidden") {
     card.classList.add("hidden");
     card.dataset.status = "hidden";
@@ -34,16 +42,18 @@ function render(state) {
   card.classList.remove("hidden");
   card.dataset.status = state.status;
   pill.textContent = state.label || labels[state.status] || state.status;
-  text.textContent = state.text || "";
-  document.getElementById("overlay-hint").textContent = state.stealth ? `${state.exitShortcut} restores app · Click to dismiss · Capture protection is best effort` : "Esc or click to dismiss";
+  if (text.textContent !== (state.text || "")) text.textContent = state.text || "";
+  for (const [action, accelerator] of Object.entries(state.shortcuts || {})) {
+    const key = document.getElementById(`shortcut-${action}`);
+    if (key) { key.textContent = macShortcut(accelerator); key.parentElement.setAttribute("aria-label", `${key.parentElement.title}: ${accelerator}`); }
+  }
+  document.getElementById("stealth-control").hidden = !state.stealth;
+  card.classList.toggle("click-through", Boolean(state.stealth));
   fitWindow();
 }
 
 window.copilot.onState(render);
-
-card?.addEventListener("click", () => {
-  window.copilot.dismiss();
-});
+window.copilot.onScroll((distance) => { text?.scrollBy({ top: distance, behavior: "instant" }); });
 
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {

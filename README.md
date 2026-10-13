@@ -82,7 +82,7 @@ With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
 
    **Context library** accepts multiple PDF, DOCX, TXT, Markdown, CSV, and JSON documents together, plus freeform text in **Direct context**. Click **Save text** to apply or clear your notes. Readable document text is extracted locally and saved between launches; all ready documents and saved notes are sent together to the selected AI provider with every answer, summary, briefing, and screenshot request. Imported documents are snapshots: remove and re-add to update them. Removing an entry leaves the original file intact. Files can be up to 20 MB each, with a combined limit of 120,000 characters for documents and notes; content is never silently truncated. Failed imports display a reason and are excluded, while other documents remain usable. Scanned PDFs need OCR first, and password-protected or invalid documents may not be readable. Existing file references remain usable as long as their originals are accessible; re-import them to save a snapshot.
 
-   **Stealth mode** (macOS): use **Enter stealth mode** on the Meeting page, the menu-bar action, or `Option+Shift+S`. The workspace hides, the Dock / Cmd+Tab entry and menu-bar icon disappear, and the floating reply overlay stays visible locally. All meeting hotkeys continue working. Press `Option+Shift+S` again to restore the workspace, Dock, and menu-bar icon, including while an agent is busy. Change this shortcut in Settings (`STEALTH_HOTKEY` in `.env`); stealth is unavailable if the restore shortcut cannot be registered. Clicking a reply dismisses the overlay without exiting stealth. Reopening the application while stealth is active does not reveal the workspace. Stealth is not persisted: restarting returns to normal mode.
+   **Stealth mode** (macOS): use **Enter stealth mode** on the Meeting page, the menu-bar action, or `Option+Shift+S`. The workspace hides, the Dock / Cmd+Tab entry and menu-bar icon disappear, both windows are hidden from Mission Control, and the floating reply overlay stays visible locally. In stealth, the overlay is non-focusable and click-through: clicking it interacts with the meeting or editor underneath. All meeting and overlay hotkeys continue working. Press `Option+Shift+S` again to restore the workspace, Dock, and menu-bar icon, including while an agent is busy. Change shortcuts in Settings; stealth is unavailable if the restore shortcut cannot be registered. `Option+Shift+B` hides or shows the overlay without exiting stealth, retaining its latest content; streaming updates will not reveal a panel you explicitly hid. Outside stealth, Esc also hides the panel. Reopening the application while stealth is active does not reveal the workspace. Stealth is not persisted: restarting returns to normal mode.
 
    Screen-share exclusion is **best effort**, not a guarantee of invisibility in Google Meet, Slack, or Microsoft Teams. Stealth uses Electron’s `setContentProtection(true)` on both app windows; [Electron documents that macOS ScreenCaptureKit can still capture protected windows](https://www.electronjs.org/docs/latest/api/browser-window#winsetcontentprotectionenable-macos-windows). Share a specific meeting/application window and verify the remote view before relying on exclusion. Native permission prompts and the screenshot selection interface are not protected app windows. To quit from Terminal while hidden, find the main process with `pgrep -fl 'Meeting Copilot|Electron'`, then run `kill <PID>` using the main app PID. When using `npm run dev` or `npm start`, you can also stop the launch terminal with Ctrl+C.
 
@@ -91,9 +91,9 @@ With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
    - `Option+1` checkpoints: transcribes the latest audio and asks for a spoken English reply to the last question, using the whole call as context.
    - `Option+2` summarizes what has been said so far.
    - `Option+3` summarizes and adds concerns and useful questions.
-4. `Option+Space` again **stops** listening (or use **Stop listening** in the menu-bar menu / Quit).
+4. `Option+Space` again **stops** listening (or use **Stop listening** in the menu-bar menu / Quit). The overlay stays visible with your latest reply, or a ready message when there is no reply. Hide it explicitly with `Option+Shift+B` (or Esc when the overlay has focus).
 
-With `openai` / `groq`: `Option+Space` starts and stops a clip. `Option+1` / `Option+2` / `Option+3` stop the clip, transcribe it, and run the matching action.
+With `openai` / `groq`: `Option+Space` starts and stops a clip, keeping the overlay visible after stopping. `Option+1` / `Option+2` / `Option+3` stop the clip, transcribe it, and run the matching action.
 
 Shortcuts are configurable in **Settings** or initially in `.env`. In Electron, Option on Mac is `Alt`.
 
@@ -104,6 +104,15 @@ Shortcuts are configurable in **Settings** or initially in `.env`. In Electron, 
 | Summary                | `SUMMARY_HOTKEY=Alt+2`    |
 | Summary + notes        | `BRIEFING_HOTKEY=Alt+3`   |
 | Toggle stealth / restore app | `STEALTH_HOTKEY=Alt+Shift+S` |
+| Show / hide overlay | `OVERLAY_TOGGLE_HOTKEY=Alt+Shift+B` |
+| Move overlay | `Alt+Shift+Left/Right/Up/Down` |
+| Scroll reply | `Alt+Control+Up/Down` |
+| Decrease / increase opacity | `Alt+Shift+-` / `Alt+Shift+=` |
+| Center panel / reset opacity | `OVERLAY_RESET_HOTKEY=Alt+Shift+0` |
+
+Overlay movement uses 40-pixel steps and stays inside a display’s working area. Resizing for streamed replies preserves the panel’s position. Set **Settings → Overlay appearance → Default opacity (%)** to a whole percentage from 30 to 100 (default: 100). Saving applies it immediately and persists it for future launches; reset restores this saved default after temporary keyboard adjustments. You can also set `OVERLAY_OPACITY=100` in `.env` for the initial default. All overlay controls are configurable under **Settings → Overlay shortcuts** and work without focusing the panel.
+
+The opacity setting controls the background; text and header shortcut symbols use twice that opacity, capped at 100% (35% background → 70% text; 30% → 60%). The header displays Mac key symbols for recording, answers, summaries, notes, screenshots, show/hide, and—in stealth—restoring the app. Clicking the panel no longer dismisses it.
 
 ## Screenshot questions
 

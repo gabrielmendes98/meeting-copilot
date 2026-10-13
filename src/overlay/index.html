@@ -13,7 +13,15 @@
     <div id="card" class="card hidden" data-status="hidden">
       <div class="row">
         <span id="pill" class="pill">Ready</span>
-        <span id="overlay-hint" class="hint">Esc or click to dismiss</span>
+        <div class="shortcuts" aria-label="Keyboard shortcuts">
+          <span class="shortcut-item" title="Start / stop recording"><span>Record</span><kbd id="shortcut-record"></kbd></span>
+          <span class="shortcut-item" title="Answer latest question"><span>Answer</span><kbd id="shortcut-answer"></kbd></span>
+          <span class="shortcut-item" title="Summarize"><span>Summary</span><kbd id="shortcut-summary"></kbd></span>
+          <span class="shortcut-item" title="Meeting notes"><span>Notes</span><kbd id="shortcut-notes"></kbd></span>
+          <span class="shortcut-item" title="Screenshot"><span>Screenshot</span><kbd id="shortcut-screenshot"></kbd></span>
+          <span class="shortcut-item" title="Show / hide overlay"><span>Show/hide</span><kbd id="shortcut-toggle"></kbd></span>
+          <span class="shortcut-item" id="stealth-control" title="Restore application from stealth"><span>Restore</span><kbd id="shortcut-stealth"></kbd></span>
+        </div>
       </div>
       <p id="text" class="text"></p>
     </div>

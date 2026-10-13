@@ -12,6 +12,10 @@ test('settings reject unsupported providers and conflicting shortcut aliases', (
   assert.throws(() => validateSettings({ ...settingDefaults, CHECKPOINT_HOTKEY: 'Option+Space' }), /different shortcut/);
   assert.throws(() => validateSettings({ ...settingDefaults, STEALTH_HOTKEY: 'Option+Space' }), /different shortcut/);
   assert.throws(() => validateSettings({ ...settingDefaults, AGENT_MODEL: ' ' }), /Enter a value/);
+  for (const value of ['29', '101', '50.5', 'NaN', 'Infinity']) {
+    assert.throws(() => validateSettings({ ...settingDefaults, OVERLAY_OPACITY: value }), /whole percentage/);
+  }
+  assert.equal(validateSettings({ ...settingDefaults, OVERLAY_OPACITY: '30' }).OVERLAY_OPACITY, '30');
   assert.deepEqual(validateSettings({ ...settingDefaults, AGENT_API_KEY: '', ignored: 'untrusted' }), settingDefaults);
 });
 
@@ -40,15 +44,17 @@ test('settings encrypt storage, preserve keys on blank input, and never expose c
   try {
     process.env.AGENT_API_KEY = 'original-key';
     process.env.STT_PROVIDER_API_KEY = 'speech-key';
-    settings.saveSettings(validateSettings({ ...settingDefaults, AGENT_API_KEY: '', STT_PROVIDER_API_KEY: '' }));
+    settings.saveSettings(validateSettings({ ...settingDefaults, OVERLAY_OPACITY: '65', AGENT_API_KEY: '', STT_PROVIDER_API_KEY: '' }));
     const storedText = fs.readFileSync(path.join(directory, 'settings.json'), 'utf8');
     assert.equal(storedText.includes('original-key'), false);
     assert.equal(storedText.includes('speech-key'), false);
     assert.equal(JSON.stringify(settings.publicSettings()).includes('original-key'), false);
     assert.equal(settings.publicSettings().hasAgentKey, true);
     delete process.env.AGENT_API_KEY;
+    delete process.env.OVERLAY_OPACITY;
     settings.loadSettings();
     assert.equal(process.env.AGENT_API_KEY, 'original-key');
+    assert.equal(settings.publicSettings().values.OVERLAY_OPACITY, '65');
     encryptionAvailable = false;
     assert.throws(() => settings.saveSettings({ ...settingDefaults, AGENT_API_KEY: 'replacement' }), /encryption is unavailable/);
     assert.equal(fs.readFileSync(path.join(directory, 'settings.json'), 'utf8'), storedText);

@@ -37,7 +37,8 @@ import {
 import { captureRegion } from "./screenshot";
 import { transcription, transcribeWav, resetTranscription, pickProvider } from "./transcribe";
 import { loadSettings, publicSettings, saveSettings } from "./settings";
-import { validateSettings, shortcutKeys } from "./settings-config";
+import { validateSettings, shortcutKeys, settingDefaults } from "./settings-config";
+import { constrainOverlay } from "./overlay-layout";
 import { addContextFiles, listContextFiles, removeContextFile, getContextText, saveContextText } from "./context-files";
 import { assertWavHasAudio } from "./wav";
 import type { OverlayState, OverlayStatus } from "./types";
@@ -52,6 +53,8 @@ let busy = false;
 let stealth = false;
 let stealthTransition = false;
 let stealthShortcutRegistered = false;
+let overlaySuppressed = false;
+let overlayOpacity = 1;
 const capture = new SystemAudioCapture();
 
 function overlayPath(): string {
@@ -62,8 +65,12 @@ function listeningActive(): boolean {
   return transcription.active || capture.active;
 }
 
+function overlayShortcuts(): NonNullable<OverlayState["shortcuts"]> {
+  return { record: hotkey(), answer: checkpointHotkey(), summary: summaryHotkey(), notes: briefingHotkey(), screenshot: screenshotHotkey(), toggle: shortcutValue("OVERLAY_TOGGLE_HOTKEY"), stealth: stealthHotkey() };
+}
+
 function sendState(status: OverlayStatus, text = "", label?: string): void {
-  const state: OverlayState = { status, text, label, stealth, exitShortcut: displayHotkey(stealthHotkey()) };
+  const state: OverlayState = { status, text, label, stealth, opacity: overlayOpacity, shortcuts: overlayShortcuts() };
   currentState = state;
   if (status === "answer") latestReply = text;
   publishAppState();
@@ -73,7 +80,7 @@ function sendState(status: OverlayStatus, text = "", label?: string): void {
     setTrayRecording(listeningActive());
     return;
   }
-  overlay?.showInactive();
+  if (!overlaySuppressed) overlay?.showInactive();
   setTrayRecording(listeningActive() || status === "recording");
 }
 
@@ -157,8 +164,12 @@ async function setStealthMode(enabled: boolean): Promise<void> {
       mainWindow?.setContentProtection(true);
       overlay?.setContentProtection(true);
       overlay?.setFocusable(false);
+      overlay?.setIgnoreMouseEvents(true);
+      overlay?.setHiddenInMissionControl(true);
+      mainWindow?.setHiddenInMissionControl(true);
       mainWindow?.setSkipTaskbar(true);
       stealth = true;
+      overlaySuppressed = false;
       mainWindow?.hide();
       tray?.destroy(); tray = null;
       app.setActivationPolicy("accessory");
@@ -179,12 +190,14 @@ async function setStealthMode(enabled: boolean): Promise<void> {
       mainWindow?.setContentProtection(false);
       overlay?.setContentProtection(false);
       overlay?.setFocusable(true);
+      overlay?.setIgnoreMouseEvents(false);
+      overlay?.setHiddenInMissionControl(false);
+      mainWindow?.setHiddenInMissionControl(false);
       mainWindow?.setSkipTaskbar(false);
       stealth = false;
       if (!tray) createTray();
       refreshTray();
-      if (currentState.status === "idle") hideOverlay();
-      else sendState(currentState.status, currentState.text, currentState.label);
+      sendState(currentState.status, currentState.text, currentState.label);
     }
   } finally { stealthTransition = false; publishAppState(); }
   if (!enabled) openApplication();
@@ -197,7 +210,60 @@ function toggleStealthMode(): void {
 }
 
 function hotkeyHandlers(): Array<() => void> {
-  return [() => { void toggleCapture(); }, () => runTranscriptAction("checkpoint"), () => runTranscriptAction("summary"), () => runTranscriptAction("briefing"), () => { void toggleScreenshot(); }, toggleStealthMode];
+  return [() => { void toggleCapture(); }, () => runTranscriptAction("checkpoint"), () => runTranscriptAction("summary"), () => runTranscriptAction("briefing"), () => { void toggleScreenshot(); }, toggleStealthMode,
+    toggleOverlayVisibility, () => moveOverlay(-40, 0), () => moveOverlay(40, 0), () => moveOverlay(0, -40), () => moveOverlay(0, 40),
+    () => overlay?.webContents.send("overlay-scroll", -160), () => overlay?.webContents.send("overlay-scroll", 160),
+    () => changeOverlayOpacity(-0.1), () => changeOverlayOpacity(0.1), resetOverlayLayout];
+}
+
+function shortcutValue(key: typeof shortcutKeys[number]): string {
+  return process.env[key]?.trim() || settingDefaults[key];
+}
+
+function dismissOverlay(): void {
+  overlaySuppressed = true;
+  overlay?.hide();
+}
+
+function toggleOverlayVisibility(): void {
+  if (!overlay) overlay = createOverlay();
+  if (overlay.isVisible()) { dismissOverlay(); return; }
+  overlaySuppressed = false;
+  if (currentState.status === "hidden") {
+    if (latestReply) sendState("answer", latestReply);
+    else sendState("idle", `${displayHotkey(hotkey())} starts or stops listening. ${displayHotkey(checkpointHotkey())} asks for an answer.`, stealth ? "Stealth" : "Ready");
+  } else { sendState(currentState.status, currentState.text, currentState.label); }
+}
+
+function moveOverlay(dx: number, dy: number): void {
+  if (!overlay) return;
+  const bounds = overlay.getBounds();
+  const next = { ...bounds, x: bounds.x + dx, y: bounds.y + dy };
+  overlay.setBounds(constrainOverlay(next, screen.getDisplayMatching(next).workArea));
+}
+
+function changeOverlayOpacity(delta: number): void {
+  overlayOpacity = Math.min(1, Math.max(0.3, Math.round((overlayOpacity + delta) * 100) / 100));
+  publishOverlayAppearance();
+}
+
+function publishOverlayAppearance(): void {
+  // Keep native opacity at 100%; the renderer independently composites text and background.
+  currentState = { ...currentState, opacity: overlayOpacity, shortcuts: overlayShortcuts() };
+  overlay?.webContents.send("overlay-state", currentState);
+}
+
+function defaultOverlayOpacity(): number {
+  const percent = Number(publicSettings().values.OVERLAY_OPACITY);
+  return Number.isInteger(percent) && percent >= 30 && percent <= 100 ? percent / 100 : 1;
+}
+
+function resetOverlayLayout(): void {
+  if (!overlay) return;
+  const bounds = overlay.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  overlay.setBounds(constrainOverlay({ ...bounds, x: area.x + Math.round((area.width - bounds.width) / 2), y: area.y + 32 }, area));
+  overlayOpacity = defaultOverlayOpacity(); publishOverlayAppearance();
 }
 
 function registerApplicationIpc(): void {
@@ -239,6 +305,8 @@ function registerApplicationIpc(): void {
     }
     setBusy(true);
     try {
+      overlayOpacity = defaultOverlayOpacity();
+      publishOverlayAppearance();
       await resetAgent();
       await resetTranscription();
       startupError = "";
@@ -268,7 +336,8 @@ const OVERLAY_WIDTH = 840;
 const OVERLAY_MIN_HEIGHT = 140;
 
 function overlayMaxHeight(): number {
-  return Math.round(screen.getPrimaryDisplay().workAreaSize.height * 0.55);
+  const area = overlay ? screen.getDisplayMatching(overlay.getBounds()).workArea : screen.getPrimaryDisplay().workArea;
+  return Math.round(area.height * 0.55);
 }
 
 function resizeOverlay(contentHeight: number): void {
@@ -277,23 +346,15 @@ function resizeOverlay(contentHeight: number): void {
     overlayMaxHeight(),
     Math.max(OVERLAY_MIN_HEIGHT, Math.ceil(contentHeight)),
   );
-  const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize;
   const bounds = overlay.getBounds();
-  overlay.setBounds({
-    x: Math.round((screenWidth - OVERLAY_WIDTH) / 2),
-    y: bounds.y,
-    width: OVERLAY_WIDTH,
-    height,
-  });
+  overlay.setBounds(constrainOverlay({ ...bounds, height }, screen.getDisplayMatching(bounds).workArea));
 }
 
 function createOverlay(): BrowserWindow {
-  const { width } = screen.getPrimaryDisplay().workAreaSize;
+  const area = screen.getPrimaryDisplay().workArea;
+  const bounds = constrainOverlay({ width: OVERLAY_WIDTH, height: OVERLAY_MIN_HEIGHT, x: area.x + Math.round((area.width - OVERLAY_WIDTH) / 2), y: area.y + 32 }, area);
   const win = new BrowserWindow({
-    width: OVERLAY_WIDTH,
-    height: OVERLAY_MIN_HEIGHT,
-    x: Math.round((width - OVERLAY_WIDTH) / 2),
-    y: 52,
+    ...bounds,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -310,6 +371,9 @@ function createOverlay(): BrowserWindow {
   });
   win.setContentProtection(stealth);
   win.setFocusable(!stealth);
+  win.setIgnoreMouseEvents(stealth);
+  win.setHiddenInMissionControl(stealth);
+  win.setOpacity(1);
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: stealth });
   win.setAlwaysOnTop(true, "screen-saver");
   win.loadFile(overlayPath());
@@ -358,20 +422,26 @@ function createTray(): Tray {
   return next;
 }
 
-function hideOverlay(): void {
-  sendState("hidden");
-}
-
 async function stopListening(): Promise<void> {
   if (busy) return;
   setBusy(true);
   try {
     await transcription.stop();
     refreshTray();
-    hideOverlay();
+    showStoppedRecording();
   } catch (err) {
     sendState("error", err instanceof Error ? err.message : String(err));
   } finally { setBusy(false); }
+}
+
+function showStoppedRecording(): void {
+  if (currentState.status === "answer" || currentState.status === "error") {
+    sendState(currentState.status, currentState.text, currentState.label);
+  } else if (latestReply) {
+    sendState("answer", latestReply);
+  } else {
+    sendState("idle", "Recording stopped. Your copilot is ready when you are.");
+  }
 }
 
 async function askAndShow(
@@ -497,7 +567,7 @@ async function toggleCapture(): Promise<void> {
     } else {
       const wavPath = await capture.stop();
       refreshTray();
-      hideOverlay();
+      showStoppedRecording();
       try { fs.unlinkSync(wavPath); } catch { /* Already removed. */ }
     }
   } catch (err) {
@@ -511,7 +581,8 @@ async function toggleScreenshot(): Promise<void> {
 
   if (!checkConfiguration(true)) return;
 
-  hideOverlay();
+  const overlayWasVisible = overlay?.isVisible();
+  overlay?.hide();
   setBusy(true);
   let pngPath: string | null = null;
   try {
@@ -520,7 +591,10 @@ async function toggleScreenshot(): Promise<void> {
     if (applicationWasVisible) mainWindow?.hide();
     try { pngPath = await captureRegion(); }
     finally { if (applicationWasVisible && !stealth && !stealthTransition) mainWindow?.show(); }
-    if (!pngPath) return;
+    if (!pngPath) {
+      if (overlayWasVisible && !overlaySuppressed) overlay?.showInactive();
+      return;
+    }
     sendState("thinking", "Reading the screenshot…");
     const answer = await askFromScreenshot(pngPath, (full) => {
       sendState("answer", full);
@@ -565,22 +639,11 @@ function registerHotkey(accelerator: string, handler: () => void): boolean {
 }
 
 function registerHotkeys(): void {
-  registerHotkey(hotkey(), () => {
-    void toggleCapture();
+  const handlers = hotkeyHandlers();
+  shortcutKeys.forEach((key, index) => {
+    const registered = registerHotkey(shortcutValue(key), handlers[index]);
+    if (key === "STEALTH_HOTKEY") stealthShortcutRegistered = registered;
   });
-  registerHotkey(checkpointHotkey(), () => {
-    runTranscriptAction("checkpoint");
-  });
-  registerHotkey(summaryHotkey(), () => {
-    runTranscriptAction("summary");
-  });
-  registerHotkey(briefingHotkey(), () => {
-    runTranscriptAction("briefing");
-  });
-  registerHotkey(screenshotHotkey(), () => {
-    void toggleScreenshot();
-  });
-  stealthShortcutRegistered = registerHotkey(stealthHotkey(), toggleStealthMode);
   refreshTray();
 }
 
@@ -596,6 +659,8 @@ if (!gotLock) {
   app.whenReady().then(async () => {
     loadEnv();
     try { loadSettings(); } catch { startupError = "Saved settings could not be loaded. Review and save your settings again."; }
+    overlayOpacity = defaultOverlayOpacity();
+    currentState = { ...currentState, opacity: overlayOpacity, shortcuts: overlayShortcuts() };
     if (process.platform === "darwin") {
       app.setActivationPolicy("regular");
       await app.dock?.show();
@@ -613,7 +678,7 @@ if (!gotLock) {
       refreshTray();
       sendState("error", err.message);
     };
-    ipcMain.on("overlay-dismiss", hideOverlay);
+    ipcMain.on("overlay-dismiss", (event) => { if (event.sender === overlay?.webContents) dismissOverlay(); });
     ipcMain.on("overlay-height", (_event, height: number) => {
       if (typeof height === "number" && Number.isFinite(height)) {
         resizeOverlay(height);

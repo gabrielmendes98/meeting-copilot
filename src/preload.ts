@@ -10,6 +10,9 @@ contextBridge.exposeInMainWorld("copilot", {
   dismiss() {
     ipcRenderer.send("overlay-dismiss");
   },
+  onScroll(callback: (distance: number) => void) {
+    ipcRenderer.on("overlay-scroll", (_event, distance: number) => callback(distance));
+  },
   resize(height: number) {
     ipcRenderer.send("overlay-height", height);
   },

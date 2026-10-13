@@ -12,13 +12,15 @@ export type OverlayState = {
   text: string;
   label?: string;
   stealth?: boolean;
-  exitShortcut?: string;
+  opacity?: number;
+  shortcuts?: { record: string; answer: string; summary: string; notes: string; screenshot: string; toggle: string; stealth: string };
 };
 
 export type CopilotApi = {
   onState: (callback: (state: OverlayState) => void) => void;
   dismiss: () => void;
   resize: (height: number) => void;
+  onScroll: (callback: (distance: number) => void) => void;
 };
 
 declare global {
