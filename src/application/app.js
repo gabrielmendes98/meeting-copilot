@@ -90,7 +90,7 @@ function render(next) {
   $("session-title").textContent = listening ? (live ? "Listening to the conversation" : "Recording a meeting clip") : "Ready for your next meeting";
   $("session-description").textContent = listening ? (live ? "Ask for help at any point. Listening continues." : "Choose an action to stop and transcribe this clip.") : "Capture the conversation from your meeting app.";
   $("capture").firstChild.textContent = listening ? (live ? "Stop listening " : "Stop recording ") : (live ? "Start listening " : "Start recording ");
-  const shortcuts = { "record-shortcut": "HOTKEY", "answer-shortcut": "CHECKPOINT_HOTKEY", "summary-shortcut": "SUMMARY_HOTKEY", "notes-shortcut": "BRIEFING_HOTKEY", "screenshot-shortcut": "SCREENSHOT_HOTKEY", "stealth-shortcut": "STEALTH_HOTKEY" };
+  const shortcuts = { "record-shortcut": "HOTKEY", "answer-shortcut": "CHECKPOINT_HOTKEY", "summary-shortcut": "SUMMARY_HOTKEY", "notes-shortcut": "BRIEFING_HOTKEY", "screenshot-shortcut": "SCREENSHOT_HOTKEY", "full-screenshot-shortcut": "FULL_SCREENSHOT_HOTKEY", "stealth-shortcut": "STEALTH_HOTKEY" };
   for (const [id, key] of Object.entries(shortcuts)) $(id).textContent = shortcut(settings.values[key]);
   document.querySelectorAll("[data-action]").forEach((button) => {
     const action = button.dataset.action;

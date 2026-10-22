@@ -17,6 +17,22 @@ const labels = {
   error: "Error",
 };
 
+function showReply(value) {
+  const next = value || "";
+  if (text.dataset.source === next) return;
+  const atBottom = text.scrollHeight - text.scrollTop - text.clientHeight < 32;
+  const previous = text.scrollTop;
+  text.dataset.source = next;
+  try {
+    if (!next) text.innerHTML = "";
+    else if (typeof renderMarkdown === "function") text.innerHTML = renderMarkdown(next);
+    else text.textContent = next;
+  } catch {
+    text.textContent = next;
+  }
+  text.scrollTop = atBottom ? text.scrollHeight : previous;
+}
+
 function fitWindow() {
   if (!card || card.classList.contains("hidden")) return;
   requestAnimationFrame(() => {
@@ -36,13 +52,14 @@ function render(state) {
   if (state.status === "hidden") {
     card.classList.add("hidden");
     card.dataset.status = "hidden";
-    text.textContent = "";
+    text.innerHTML = "";
+    delete text.dataset.source;
     return;
   }
   card.classList.remove("hidden");
   card.dataset.status = state.status;
   pill.textContent = state.label || labels[state.status] || state.status;
-  if (text.textContent !== (state.text || "")) text.textContent = state.text || "";
+  showReply(state.text || "");
   for (const [action, accelerator] of Object.entries(state.shortcuts || {})) {
     const key = document.getElementById(`shortcut-${action}`);
     if (key) { key.textContent = macShortcut(accelerator); key.parentElement.setAttribute("aria-label", `${key.parentElement.title}: ${accelerator}`); }

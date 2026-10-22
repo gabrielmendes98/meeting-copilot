@@ -14,6 +14,7 @@ import {
 } from "electron";
 import { SystemAudioCapture } from "./capture";
 import {
+  askFromFullScreenshot,
   askFromScreenshot,
   askFromTranscript,
   disposeAgent,
@@ -30,11 +31,12 @@ import {
   loadEnv,
   missingKeys,
   missingAgentKeys,
+  fullScreenshotHotkey,
   screenshotHotkey,
   summaryHotkey,
   stealthHotkey,
 } from "./env";
-import { captureRegion } from "./screenshot";
+import { capturePrimaryDisplay, captureRegion } from "./screenshot";
 import { transcription, transcribeWav, resetTranscription, pickProvider } from "./transcribe";
 import { loadSettings, publicSettings, saveSettings } from "./settings";
 import { validateSettings, shortcutKeys, settingDefaults } from "./settings-config";
@@ -69,7 +71,7 @@ function listeningActive(): boolean {
 }
 
 function overlayShortcuts(): NonNullable<OverlayState["shortcuts"]> {
-  return { record: hotkey(), answer: checkpointHotkey(), summary: summaryHotkey(), notes: briefingHotkey(), screenshot: screenshotHotkey(), toggle: shortcutValue("OVERLAY_TOGGLE_HOTKEY"), stealth: stealthHotkey() };
+  return { record: hotkey(), answer: checkpointHotkey(), summary: summaryHotkey(), notes: briefingHotkey(), screenshot: screenshotHotkey(), fullScreenshot: fullScreenshotHotkey(), toggle: shortcutValue("OVERLAY_TOGGLE_HOTKEY"), stealth: stealthHotkey() };
 }
 
 function sendState(status: OverlayStatus, text = "", label?: string): void {
@@ -213,7 +215,7 @@ function toggleStealthMode(): void {
 }
 
 function hotkeyHandlers(): Array<() => void> {
-  return [() => { void toggleCapture(); }, () => runTranscriptAction("checkpoint"), () => runTranscriptAction("summary"), () => runTranscriptAction("briefing"), () => { void toggleScreenshot(); }, toggleStealthMode,
+  return [() => { void toggleCapture(); }, () => runTranscriptAction("checkpoint"), () => runTranscriptAction("summary"), () => runTranscriptAction("briefing"), () => { void toggleScreenshot(); }, () => { void toggleFullScreenshot(); }, toggleStealthMode,
     toggleOverlayVisibility, () => moveOverlay(-40, 0), () => moveOverlay(40, 0), () => moveOverlay(0, -40), () => moveOverlay(0, 40),
     () => overlay?.webContents.send("overlay-scroll", -160), () => overlay?.webContents.send("overlay-scroll", 160),
     () => changeOverlayOpacity(-0.1), () => changeOverlayOpacity(0.1), resetOverlayLayout];
@@ -280,6 +282,7 @@ function registerApplicationIpc(): void {
     if (busy) return;
     if (action === "capture") await toggleCapture();
     else if (action === "screenshot") await toggleScreenshot();
+    else if (action === "full-screenshot") await toggleFullScreenshot();
     else if (["checkpoint", "summary", "briefing"].includes(action)) runTranscriptAction(action as TranscriptMode);
     else throw new Error("Unknown action.");
     publishAppState();
@@ -397,6 +400,10 @@ function trayTemplate(): MenuItemConstructorOptions[] {
     { label: `Notes: ${displayHotkey(briefingHotkey())}`, enabled: false },
     {
       label: `Screenshot: ${displayHotkey(screenshotHotkey())}`,
+      enabled: false,
+    },
+    {
+      label: `Full screenshot: ${displayHotkey(fullScreenshotHotkey())}`,
       enabled: false,
     },
     { type: "separator" },
@@ -586,9 +593,11 @@ async function toggleCapture(): Promise<void> {
   } finally { setBusy(false); }
 }
 
-async function toggleScreenshot(): Promise<void> {
+async function runScreenshot(
+  capture: () => Promise<string | null>,
+  ask: (pngPath: string, onText: (fullText: string) => void) => Promise<string>,
+): Promise<void> {
   if (busy) return;
-
   if (!checkConfiguration(true)) return;
 
   const overlayWasVisible = overlay?.isVisible();
@@ -599,16 +608,14 @@ async function toggleScreenshot(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 80));
     const applicationWasVisible = mainWindow?.isVisible();
     if (applicationWasVisible) mainWindow?.hide();
-    try { pngPath = await captureRegion(); }
+    try { pngPath = await capture(); }
     finally { if (applicationWasVisible && !stealth && !stealthTransition) mainWindow?.show(); }
     if (!pngPath) {
       if (overlayWasVisible && !overlaySuppressed) overlay?.showInactive();
       return;
     }
     sendState("thinking", "Reading the screenshot…");
-    const answer = await askFromScreenshot(pngPath, (full) => {
-      sendState("answer", full);
-    });
+    const answer = await ask(pngPath, (full) => { sendState("answer", full); });
     const text = answer || "The request wasn't clear.";
     sendState("answer", text);
     clipboard.writeText(text);
@@ -616,14 +623,18 @@ async function toggleScreenshot(): Promise<void> {
     sendState("error", err instanceof Error ? err.message : String(err));
   } finally {
     if (pngPath) {
-      try {
-        fs.unlinkSync(pngPath);
-      } catch {
-        // ignore
-      }
+      try { fs.unlinkSync(pngPath); } catch { /* Already removed. */ }
     }
     setBusy(false);
   }
+}
+
+function toggleScreenshot(): Promise<void> {
+  return runScreenshot(captureRegion, askFromScreenshot);
+}
+
+function toggleFullScreenshot(): Promise<void> {
+  return runScreenshot(capturePrimaryDisplay, askFromFullScreenshot);
 }
 
 function checkConfiguration(agentOnly = false): boolean {

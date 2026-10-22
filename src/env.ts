@@ -27,6 +27,10 @@ export function screenshotHotkey(): string {
   return process.env.SCREENSHOT_HOTKEY?.trim() || "Alt+Shift+Space";
 }
 
+export function fullScreenshotHotkey(): string {
+  return process.env.FULL_SCREENSHOT_HOTKEY?.trim() || "Alt+Ctrl+Space";
+}
+
 export function checkpointHotkey(): string {
   return process.env.CHECKPOINT_HOTKEY?.trim() || "Alt+1";
 }

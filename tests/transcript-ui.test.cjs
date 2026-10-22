@@ -42,7 +42,7 @@ function loadApp() {
     navigator: { clipboard: { async writeText(value) { if (copyError) throw new Error('denied'); copied = value; } } },
     setTimeout() {}, clearTimeout() {},
   });
-  const shortcuts = { HOTKEY: 'Alt+Space', CHECKPOINT_HOTKEY: 'Alt+1', SUMMARY_HOTKEY: 'Alt+2', BRIEFING_HOTKEY: 'Alt+3', SCREENSHOT_HOTKEY: 'Alt+Shift+Space', STEALTH_HOTKEY: 'Alt+Shift+S' };
+  const shortcuts = { HOTKEY: 'Alt+Space', CHECKPOINT_HOTKEY: 'Alt+1', SUMMARY_HOTKEY: 'Alt+2', BRIEFING_HOTKEY: 'Alt+3', SCREENSHOT_HOTKEY: 'Alt+Shift+Space', FULL_SCREENSHOT_HOTKEY: 'Alt+Ctrl+Space', STEALTH_HOTKEY: 'Alt+Shift+S' };
   return {
     get, handler, notice: () => get('notice').textContent,
     copied: () => copied,

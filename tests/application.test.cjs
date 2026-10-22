@@ -11,6 +11,8 @@ test('settings reject unsupported providers and conflicting shortcut aliases', (
   assert.throws(() => validateSettings({ ...settingDefaults, STT_PROVIDER: 'unknown' }), /supported transcription/);
   assert.throws(() => validateSettings({ ...settingDefaults, CHECKPOINT_HOTKEY: 'Option+Space' }), /different shortcut/);
   assert.throws(() => validateSettings({ ...settingDefaults, STEALTH_HOTKEY: 'Option+Space' }), /different shortcut/);
+  assert.equal(settingDefaults.FULL_SCREENSHOT_HOTKEY, 'Alt+Ctrl+Space');
+  assert.throws(() => validateSettings({ ...settingDefaults, FULL_SCREENSHOT_HOTKEY: 'Alt+Space' }), /different shortcut/);
   assert.throws(() => validateSettings({ ...settingDefaults, AGENT_MODEL: ' ' }), /Enter a value/);
   for (const value of ['29', '101', '50.5', 'NaN', 'Infinity']) {
     assert.throws(() => validateSettings({ ...settingDefaults, OVERLAY_OPACITY: value }), /whole percentage/);

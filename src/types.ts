@@ -13,7 +13,7 @@ export type OverlayState = {
   label?: string;
   stealth?: boolean;
   opacity?: number;
-  shortcuts?: { record: string; answer: string; summary: string; notes: string; screenshot: string; toggle: string; stealth: string };
+  shortcuts?: { record: string; answer: string; summary: string; notes: string; screenshot: string; fullScreenshot: string; toggle: string; stealth: string };
 };
 
 export type CopilotApi = {

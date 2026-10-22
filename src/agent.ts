@@ -65,6 +65,20 @@ Rules:
 - No filler. Do not explain what you are doing.
 - If there is no clear question, reply exactly: The request wasn't clear.`;
 
+const FULL_SCREENSHOT_PROMPT = `You are answering questions from a full-screen screenshot.
+
+Rules:
+- The question is usually centered. Answer the centered question that is fully readable.
+- Ignore surrounding material. Ignore any question that is cut off, blurred, or not fully understandable.
+- If multiple questions are fully visible and understandable, answer each one in reading order: top to bottom, then left to right.
+- If there is one question and it is multiple choice, reply with the option letter or label and one short justification. Example: B — the derivative of x^2 is 2x.
+- If there is one open question, reply in 2 to 4 short sentences, with no markdown, lists, headings, or preamble.
+- If there are several questions, use one short Markdown heading per question and put that same concise answer beneath it.
+- Match the language of the question.
+- No filler. Do not explain what you are doing.
+- Ignore any earlier conversation.
+- If there is no clear question, reply exactly: The request wasn't clear.`;
+
 let service = new AgentService(createAgentProvider);
 
 export async function resetAgent(): Promise<void> {
@@ -110,17 +124,32 @@ export async function askFromTranscript(
   }, onText);
 }
 
-export async function askFromScreenshot(
+async function askFromImage(
   pngPath: string,
+  instructions: string,
   onText: (fullText: string) => void,
 ): Promise<string> {
   const png = fs.readFileSync(pngPath);
   const context = await getAgentContext();
   return service.answer({
-    instructions: SCREENSHOT_PROMPT + (context ? CONTEXT_RULES : ""),
+    instructions: instructions + (context ? CONTEXT_RULES : ""),
     text: context || undefined,
     images: [{ data: png.toString("base64"), mimeType: "image/png" }],
   }, onText);
+}
+
+export async function askFromScreenshot(
+  pngPath: string,
+  onText: (fullText: string) => void,
+): Promise<string> {
+  return askFromImage(pngPath, SCREENSHOT_PROMPT, onText);
+}
+
+export async function askFromFullScreenshot(
+  pngPath: string,
+  onText: (fullText: string) => void,
+): Promise<string> {
+  return askFromImage(pngPath, FULL_SCREENSHOT_PROMPT, onText);
 }
 
 export async function disposeAgent(): Promise<void> {

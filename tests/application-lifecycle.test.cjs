@@ -8,6 +8,7 @@ const { settingDefaults, shortcutKeys } = require('../dist/settings-config');
 test('Dock lifecycle and settings IPC enforce trusted senders and roll back shortcut conflicts', async () => {
   const windows = [], trays = [], events = {}, handlers = {}, shortcuts = new Map();
   let saves = 0, resets = 0, listening = false, dockShown = false, activationPolicy, failStart = false, announceDuringStart = "";
+  let regionCaptures = 0, primaryCaptures = 0, copied = "", missingAgent = [], primaryError = null, hiddenDuringPrimary = false;
   const environment = { OVERLAY_OPACITY: '60' };
   class Window {
     constructor(options) {
@@ -49,7 +50,7 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   };
   const dependencies = {
     electron: {
-      app, BrowserWindow: Window, clipboard: {}, ipcMain: { handle: (name, handler) => { handlers[name] = handler; }, on() {} },
+      app, BrowserWindow: Window, clipboard: { writeText(value) { copied = value; } }, ipcMain: { handle: (name, handler) => { handlers[name] = handler; }, on() {} },
       globalShortcut: {
         unregisterAll: () => shortcuts.clear(),
         register: (key, handler) => { if (key === 'Alt+9' || shortcuts.has(key)) return false; shortcuts.set(key, handler); return true; },
@@ -60,7 +61,11 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
       Tray: class { constructor() { trays.push(this); } setToolTip() {} setContextMenu() {} setTitle() {} destroy() { this.destroyed = true; } },
     },
     './capture': { SystemAudioCapture: class { active = false; kill() {} async start() { this.active = true; } async stop() { this.active = false; return '/tmp/copilot-test-no-audio.wav'; } } },
-    './agent': { async warmAgent() {}, async resetAgent() { resets++; } },
+    './agent': {
+      async warmAgent() {}, async resetAgent() { resets++; },
+      async askFromScreenshot() { return 'region answer'; },
+      async askFromFullScreenshot(_png, onText) { onText('full answer'); return 'full answer'; },
+    },
     './transcribe': { transcription, pickProvider: () => 'macos', async resetTranscription() { resets++; } },
     './settings': {
       loadSettings() {}, publicSettings: () => ({ values: { ...settingDefaults, ...environment } }),
@@ -68,14 +73,24 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
     },
     './settings-config': require('../dist/settings-config'),
     './overlay-layout': require('../dist/overlay-layout'),
-    './context-files': {}, './screenshot': {}, './wav': {},
+    './context-files': {}, './wav': {},
+    './screenshot': {
+      async captureRegion() { regionCaptures++; return '/tmp/region.png'; },
+      async capturePrimaryDisplay() {
+        primaryCaptures++;
+        hiddenDuringPrimary = !windows[0].isVisible() && !windows[1].isVisible();
+        if (primaryError) throw primaryError;
+        return '/tmp/primary.png';
+      },
+    },
     './env': {
-      loadEnv() {}, missingKeys: () => [], missingAgentKeys: () => [],
+      loadEnv() {}, missingKeys: () => [], missingAgentKeys: () => missingAgent,
       hotkey: () => environment.HOTKEY || settingDefaults.HOTKEY,
       checkpointHotkey: () => environment.CHECKPOINT_HOTKEY || settingDefaults.CHECKPOINT_HOTKEY,
       summaryHotkey: () => environment.SUMMARY_HOTKEY || settingDefaults.SUMMARY_HOTKEY,
       briefingHotkey: () => environment.BRIEFING_HOTKEY || settingDefaults.BRIEFING_HOTKEY,
       screenshotHotkey: () => environment.SCREENSHOT_HOTKEY || settingDefaults.SCREENSHOT_HOTKEY,
+      fullScreenshotHotkey: () => environment.FULL_SCREENSHOT_HOTKEY || settingDefaults.FULL_SCREENSHOT_HOTKEY,
       stealthHotkey: () => environment.STEALTH_HOTKEY || settingDefaults.STEALTH_HOTKEY,
     },
   };
@@ -202,6 +217,33 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   await handlers['app-action'](event, 'capture');
   assert.equal(listening, false);
   assert.equal(handlers['app-state'](event).transcript, 'Kept after stop');
+  announceDuringStart = '';
+  await handlers['app-action'](event, 'screenshot');
+  assert.equal(regionCaptures, 1);
+  assert.equal(primaryCaptures, 0);
+  assert.equal(copied, 'region answer');
+  assert.equal(main.visible, true);
+  await handlers['app-action'](event, 'full-screenshot');
+  assert.equal(primaryCaptures, 1);
+  assert.equal(hiddenDuringPrimary, true);
+  assert.equal(main.visible, true);
+  assert.equal(windows[0].visible, true);
+  assert.equal(copied, 'full answer');
+  assert.equal(windows[0].messages.at(-1)[1].text, 'full answer');
+  primaryError = new Error('Could not capture the primary display. Check Screen Recording permission.');
+  await handlers['app-action'](event, 'full-screenshot');
+  assert.equal(main.visible, true);
+  assert.match(windows[0].messages.at(-1)[1].text, /Screen Recording permission/);
+  primaryError = null;
+  sandbox.setBusyForTest(true);
+  await handlers['app-action'](event, 'full-screenshot');
+  assert.equal(primaryCaptures, 2);
+  sandbox.setBusyForTest(false);
+  missingAgent = ['AGENT_API_KEY'];
+  await handlers['app-action'](event, 'full-screenshot');
+  assert.equal(primaryCaptures, 2);
+  assert.match(windows[0].messages.at(-1)[1].text, /API keys/);
+  missingAgent = [];
   announceDuringStart = 'Partial';
   await handlers['app-action'](event, 'capture');
   assert.equal(listening, false);
