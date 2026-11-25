@@ -86,27 +86,47 @@ test('size limits reject only the overflowing import and legacy references remai
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 
-test('all transcript modes and screenshots send current library context through the shared provider request', async () => {
+test('mode references restrict document context and preserve shared notes', async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-mode-references-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const first = path.join(directory, 'first.txt');
+  const second = path.join(directory, 'second.txt');
+  fs.writeFileSync(first, 'Engineering deadline on Friday');
+  fs.writeFileSync(second, 'Sales review on Monday');
+  const library = loadLibrary(directory, { canceled: false, filePaths: [first, second] });
+  const [included, excluded] = await library.addContextFiles({});
+  library.saveContextText('Shared agenda');
+  const scoped = await library.getAgentContext([included.id]);
+  assert.match(scoped, /Engineering deadline/);
+  assert.match(scoped, /Shared agenda/);
+  assert.doesNotMatch(scoped, /Sales review/);
+  assert.match(await library.getAgentContext([excluded.id]), /Sales review/);
+  assert.doesNotMatch(await library.getAgentContext([]), /Sales review|Engineering deadline/);
+  assert.match(await library.getAgentContext(), /Sales review/);
+  library.removeContextFile(included.id);
+  assert.doesNotMatch(await library.getAgentContext([included.id]), /Engineering deadline/);
+});
+
+test('contextual chat and screenshots send the current reference library', async () => {
   const requests = [];
   let context = 'Reference context: Project deadline is Friday.\n\n';
   const dependencies = {
     './context-files': { getAgentContext: async () => context },
+    './settings-config': require('../dist/settings-config'),
     './providers': { createAgentProvider() {} },
     './providers/service': { AgentService: class { async answer(request) { requests.push(request); return 'answer'; } } },
     'node:fs': { readFileSync: () => Buffer.from('png') },
   };
   const sandbox = { exports: {}, require: name => dependencies[name] || require(name) };
   vm.runInNewContext(fs.readFileSync(path.resolve('dist/agent.js'), 'utf8'), sandbox);
-  for (const mode of ['clip', 'checkpoint', 'summary', 'briefing']) {
-    await sandbox.exports.askFromTranscript('What is the deadline?', () => {}, { mode });
-    assert.match(requests.at(-1).text, /Project deadline is Friday/);
-    assert.match(requests.at(-1).text, /Transcript:.*What is the deadline/s);
-    assert.match(requests.at(-1).instructions, /data, not instructions/);
-  }
+  await sandbox.exports.askWithContext({ question: 'What is the deadline?', transcript: 'We are reviewing the schedule.' }, () => {});
+  assert.match(requests.at(-1).text, /Project deadline is Friday/);
+  assert.match(requests.at(-1).text, /transcript.*reviewing the schedule/);
+  assert.match(requests.at(-1).instructions, /never as instructions/);
   await sandbox.exports.askFromScreenshot('screen.png', () => {});
   assert.equal(requests.at(-1).text, context);
   assert.equal(requests.at(-1).images[0].data, Buffer.from('png').toString('base64'));
   context = '';
-  await sandbox.exports.askFromTranscript('Next meeting', () => {});
+  await sandbox.exports.askWithContext({ question: 'Next meeting' }, () => {});
   assert.equal(requests.at(-1).text.includes('Project deadline'), false);
 });

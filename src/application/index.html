@@ -13,36 +13,78 @@
     <nav aria-label="Main navigation">
       <button class="nav-button active" data-page="meeting" aria-current="page"><span aria-hidden="true">◉</span> Meeting</button>
       <button class="nav-button" data-page="transcript"><span aria-hidden="true">✎</span> Transcript</button>
+      <button class="nav-button" data-page="history"><span aria-hidden="true">◷</span> History</button>
       <button class="nav-button" data-page="context"><span aria-hidden="true">▤</span> Context library <span class="count" id="context-count">0</span></button>
       <button class="nav-button" data-page="settings"><span aria-hidden="true">⚙</span> Settings</button>
     </nav>
     <div class="sidebar-footer"><span class="status-dot" id="sidebar-dot"></span><span id="sidebar-status">Ready when you are</span><small>Available from your menu bar, too.</small></div>
   </aside>
   <main>
-    <header class="titlebar"><span>YOUR WORKSPACE</span><span class="privacy-label">System audio · English</span></header>
+    <header class="titlebar"><span>YOUR WORKSPACE</span><span class="privacy-label">Audio settings</span></header>
     <div id="notice" role="status" hidden></div>
     <section id="page-meeting" class="page">
       <div id="configuration-banner" class="banner" hidden><span id="configuration-message"></span><button data-open-settings>Open settings →</button></div>
       <article class="settings-card stealth-card"><div class="settings-heading"><h2>Stealth mode</h2><p>Hide the app from the Dock, Cmd+Tab, menu bar, and Mission Control. The floating overlay lets clicks pass through to your meeting, without taking focus. Use keyboard shortcuts to show, hide, move, scroll, and adjust it.</p></div><p class="stealth-warning">Screen-share protection is best effort. On macOS, full-screen sharing in Meet, Slack, or Teams may still show the overlay. Share a specific app window and verify the viewer’s screen before relying on it.</p><div class="context-text-footer"><small id="stealth-hint">Press Option+Shift+S to restore the app. Restarting also restores normal mode.</small><button id="enter-stealth" class="secondary" data-action="stealth">Enter stealth mode <kbd id="stealth-shortcut">⌥ ⇧ S</kbd></button></div></article>
       <div class="session-card">
         <div class="session-intro"><div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><h2 id="session-title">Ready for your next meeting</h2><p id="session-description">Capture the conversation from your meeting app.</p></div></div>
-        <button id="capture" class="primary" data-action="capture">Start listening <kbd id="record-shortcut">⌥ Space</kbd></button>
+        <div class="session-controls"><output id="session-clock" hidden></output><button id="pause-session" class="secondary" data-action="pause" hidden>Pause audio</button>
+          <button id="capture" class="primary" data-action="capture">Listen <kbd id="record-shortcut"></kbd></button></div>
       </div>
-      <div class="action-grid">
-        <button class="action-card" data-action="checkpoint"><span class="action-icon">↗</span><kbd id="answer-shortcut">⌥ 1</kbd><strong>Help me answer</strong><span>A clear reply to the latest question.</span></button>
-        <button class="action-card" data-action="summary"><span class="action-icon">≡</span><kbd id="summary-shortcut">⌥ 2</kbd><strong>Summarize so far</strong><span>Topics, decisions, and next steps.</span></button>
-        <button class="action-card" data-action="briefing"><span class="action-icon">✧</span><kbd id="notes-shortcut">⌥ 3</kbd><strong>Give me notes</strong><span>Concerns and useful questions.</span></button>
-      </div>
-      <article class="reply-card"><div class="card-heading"><h2 id="reply-heading">Your copilot’s response</h2><button id="copy-reply" class="text-button" disabled>Copy response</button></div><div id="reply" class="reply empty">Start listening, then ask your copilot for an answer or summary.<br>Your response will appear here and in the floating overlay.</div></article>
+      <article class="settings-card">
+        <div class="card-heading"><h2>Ask AI</h2><button id="clear-chat" class="text-button" type="button">New chat <kbd id="new-chat-shortcut"></kbd></button></div>
+        <div class="chat-mode"><label>Mode <select id="meeting-mode"></select></label><button id="new-mode" class="text-button" type="button">New mode</button><button id="edit-mode" class="text-button" type="button" hidden>Edit mode</button></div>
+        <form id="mode-editor" class="mode-editor" hidden>
+          <label>Mode name<input id="mode-name" maxlength="60" required /></label>
+          <label>Instructions<textarea id="mode-instructions" maxlength="8000" rows="4" required></textarea></label>
+          <fieldset id="mode-references"><legend>Reference documents</legend>
+            <label class="inline-check"><input id="mode-all-references" type="checkbox" checked /> Use all documents in the context library</label>
+            <div id="mode-reference-options" hidden></div>
+          </fieldset>
+          <div class="workflow-actions"><button class="secondary" type="submit">Save mode</button><button id="cancel-mode" class="text-button" type="button">Cancel</button><button id="delete-mode" class="text-button" type="button" hidden>Delete mode</button></div>
+        </form>
+        <ol id="conversation" class="conversation" aria-label="Conversation" hidden></ol>
+        <form id="ask-ai">
+          <label for="chat-question">Your question</label><textarea id="chat-question" rows="2" maxlength="4000" placeholder="Ask about this conversation or what’s on screen"></textarea>
+          <div class="workflow-actions">
+            <label class="inline-check"><input id="chat-screen" type="checkbox" /> Use screen context</label>
+            <button id="stop-chat" class="secondary" type="button" hidden>Stop response</button>
+            <button id="submit-chat" class="primary" type="submit">Ask AI <kbd id="ask-shortcut"></kbd></button>
+          </div>
+        </form>
+      </article>
+      <article class="reply-card"><div class="card-heading"><h2 id="reply-heading">Your copilot’s response</h2><button id="copy-reply" class="text-button" disabled>Copy response</button></div><div id="reply" class="reply empty">Your response will appear here and in the floating overlay.</div></article>
       <div class="meeting-footer"><span>Something on your screen?</span><span class="footer-actions"><button class="text-button" data-action="screenshot">Ask from a screenshot <kbd id="screenshot-shortcut">⌥ ⇧ Space</kbd></button><button class="text-button" data-action="full-screenshot">Full screenshot <kbd id="full-screenshot-shortcut">⌥ ⌃ Space</kbd></button></span></div>
     </section>
     <section id="page-transcript" class="page" hidden>
-      <div class="page-heading"><div><h1>Transcript</h1><p class="subtitle">What macOS has heard in this meeting.</p></div></div>
+      <div class="page-heading"><div><h1>Transcript</h1><p class="subtitle">What the copilot has heard in this meeting.</p></div></div>
       <article class="reply-card"><div class="card-heading"><h2>Live transcript</h2><button id="copy-transcript" class="text-button" disabled>Copy transcript</button></div><div id="transcript" class="reply transcript-body empty">Start listening from Meeting. Recognized speech will appear here and stay until the next meeting starts.</div></article>
+    </section>
+    <section id="page-history" class="page" hidden>
+      <div class="page-heading"><div><h1>Meeting history</h1><p class="subtitle">Search transcripts and notes saved on this Mac.</p></div></div>
+      <label for="meeting-search">Search meetings</label><input id="meeting-search" type="search" maxlength="300" placeholder="Title, notes, or words spoken" />
+      <ul id="meeting-list" class="file-list" aria-label="Saved meetings"></ul>
+      <form id="ask-history" class="settings-card">
+        <label for="history-question">Ask about saved meetings</label>
+        <div class="workflow-actions"><input id="history-question" maxlength="4000" required placeholder="Which decisions are still open?" /><button id="submit-history-question" class="secondary">Ask matches</button></div>
+        <pre id="history-answer" class="reply" hidden></pre>
+      </form>
+      <form id="meeting-detail" class="settings-card" hidden>
+        <label>Title<input id="meeting-title" maxlength="160" required /></label>
+        <label>Notes<textarea id="meeting-notes" maxlength="120000" rows="9"></textarea></label>
+        <div class="workflow-actions">
+          <button id="save-meeting" type="submit" class="primary">Save changes</button>
+          <button id="generate-notes" type="button" class="secondary">Generate notes</button>
+          <button id="export-meeting" type="button" class="text-button">Export Markdown</button><button id="copy-meeting" type="button" class="text-button">Copy Markdown</button>
+          <button id="copy-meeting-transcript" type="button" class="text-button">Copy transcript</button>
+          <button id="ask-this-meeting" type="button" class="text-button">Ask about this meeting</button>
+          <button id="delete-meeting" type="button" class="text-button">Delete</button>
+        </div>
+        <h2>Transcript</h2><pre id="meeting-transcript" class="reply transcript-body"></pre>
+      </form>
     </section>
     <section id="page-context" class="page" hidden>
       <div class="page-heading"><div><h1>Context library</h1><p class="subtitle">Give your copilot the bigger picture.</p></div><button id="add-context" class="primary">＋ Add files</button></div>
-      <div class="banner context-banner"><span><strong>Your references, working together</strong><br>All ready documents and saved text are included in each answer, summary, notes, and screenshot request to your selected AI provider.</span></div>
+      <div class="banner context-banner"><span><strong>Your references, working together</strong><br>Ready documents and saved text provide background for live AI requests. Edit a custom mode to select which documents it uses.</span></div>
       <form id="context-text-form" class="settings-card">
         <div class="settings-heading"><h2>Direct context</h2><p>Paste background information, project details, or meeting preparation notes.</p></div>
         <label for="context-text">Your notes<textarea id="context-text" rows="7" maxlength="120000" placeholder="What should your copilot know?" aria-describedby="context-text-hint"></textarea></label>
@@ -57,21 +99,39 @@
       <form id="settings-form">
         <div class="settings-card"><div class="settings-heading"><h2>AI agent</h2><p>The service that generates your answers and meeting notes.</p></div>
           <div class="form-grid"><label>Provider<select name="AGENT_PROVIDER"><option value="openai">OpenAI</option><option value="cursor">Cursor</option></select></label><label>Model<select name="AGENT_MODEL" required aria-describedby="model-hint"><option value="gpt-4.1-mini">GPT-4.1 mini (Default)</option></select><small id="model-hint">Model choices update for your selected provider. Availability depends on your account.</small></label></div>
+          <label id="custom-model-field" hidden>Provider model ID<input id="custom-model" maxlength="200" spellcheck="false" autocomplete="off" placeholder="Enter a model ID supported by the provider" /></label>
           <label>API key<input name="AGENT_API_KEY" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter your agent API key" /><small id="agent-key-hint">Stored encrypted on this Mac.</small></label>
         </div>
-        <div class="settings-card"><div class="settings-heading"><h2>Transcription</h2><p>macOS listens continuously. Cloud services transcribe recorded clips.</p></div>
-          <label>Speech provider<select name="STT_PROVIDER"><option value="macos">macOS · Local, continuous listening</option><option value="openai">OpenAI · Recorded clips</option><option value="groq">Groq · Recorded clips</option><option value="auto">Automatic · Based on available API key</option></select></label>
+        <div class="settings-card"><div class="settings-heading"><h2>Transcription</h2><p>Choose on-device transcription or a cloud service that receives audio in short segments.</p></div>
+          <label>Speech provider<select name="STT_PROVIDER"><option value="macos">macOS · Local, continuous listening</option><option value="openai">OpenAI · Cloud</option><option value="groq">Groq · Cloud</option><option value="auto">Automatic · Based on available API key</option></select></label>
+          <div class="form-grid">
+            <label>Audio source<select name="AUDIO_SOURCE"><option value="system">System audio</option><option value="microphone">Microphone</option><option value="both">System audio and microphone</option></select></label>
+            <label>Meeting audio language<select name="MEETING_AUDIO_LANGUAGE" data-language></select></label>
+            <label>AI output language<select name="OUTPUT_LANGUAGE" data-language></select></label>
+          </div>
+          <div class="workflow-actions"><button id="check-permissions" class="secondary" type="button">Check macOS permissions</button><button id="allow-microphone" class="text-button" type="button" hidden>Allow microphone</button></div>
+          <p id="permission-status" role="status" hidden></p>
           <label id="stt-key-field">Transcription API key<input name="STT_PROVIDER_API_KEY" type="password" autocomplete="new-password" spellcheck="false" placeholder="Enter your transcription API key" /><small id="stt-key-hint">Stored encrypted on this Mac.</small></label>
         </div>
-        <div class="settings-card"><div class="settings-heading"><h2>Keyboard shortcuts</h2><p>Available even when your application window is closed. Use Alt for Option and Command for ⌘.</p></div>
-          <div class="shortcut-grid"><label>Start / stop listening<input name="HOTKEY" required /></label><label>Answer latest question<input name="CHECKPOINT_HOTKEY" required /></label><label>Summarize<input name="SUMMARY_HOTKEY" required /></label><label>Meeting notes<input name="BRIEFING_HOTKEY" required /></label><label>Screenshot<input name="SCREENSHOT_HOTKEY" required /></label><label>Full screenshot<input name="FULL_SCREENSHOT_HOTKEY" required /></label><label>Toggle stealth / restore app<input name="STEALTH_HOTKEY" required /></label></div>
+        <div class="settings-card"><div class="settings-heading"><h2>Keyboard shortcuts</h2><p>Use Alt for Option and Command for ⌘. To disable a shortcut, clear its field. Reset restores the default.</p></div>
+          <div class="shortcut-grid">
+            <label>Start or end session<input name="HOTKEY" /></label>
+            <label>Ask about your screen or audio<input name="SCREEN_ASSIST_HOTKEY" /></label>
+            <label>Start a new chat<input name="CLEAR_CHAT_HOTKEY" /></label>
+            <label>Open settings<input name="SETTINGS_HOTKEY" /></label>
+            <label>Region screenshot<input name="SCREENSHOT_HOTKEY" /></label>
+            <label>Full screenshot<input name="FULL_SCREENSHOT_HOTKEY" /></label>
+            <label>Toggle stealth / restore app<input name="STEALTH_HOTKEY" required /></label>
+          </div>
         </div>
-        <div class="settings-card"><div class="settings-heading"><h2>Overlay shortcuts</h2><p>Control the panel without switching away from your meeting. Hiding it keeps the latest reply and prevents streaming updates from showing it again. These shortcuts also work while an agent is busy.</p></div><div class="shortcut-grid"><label>Show / hide overlay<input name="OVERLAY_TOGGLE_HOTKEY" required /></label><label>Center / reset opacity<input name="OVERLAY_RESET_HOTKEY" required /></label><label>Move left<input name="OVERLAY_LEFT_HOTKEY" required /></label><label>Move right<input name="OVERLAY_RIGHT_HOTKEY" required /></label><label>Move up<input name="OVERLAY_UP_HOTKEY" required /></label><label>Move down<input name="OVERLAY_DOWN_HOTKEY" required /></label><label>Scroll reply up<input name="OVERLAY_SCROLL_UP_HOTKEY" required /></label><label>Scroll reply down<input name="OVERLAY_SCROLL_DOWN_HOTKEY" required /></label><label>Decrease opacity<input name="OVERLAY_OPACITY_DOWN_HOTKEY" required /></label><label>Increase opacity<input name="OVERLAY_OPACITY_UP_HOTKEY" required /></label></div></div>
+        <div class="settings-card"><div class="settings-heading"><h2>Overlay shortcuts</h2><p>Control the panel without switching away from your meeting. Hiding it keeps the latest reply and prevents streaming updates from showing it again. These shortcuts also work while an agent is busy.</p></div><div class="shortcut-grid"><label>Show / hide overlay<input name="OVERLAY_TOGGLE_HOTKEY" /></label><label>Center / reset opacity<input name="OVERLAY_RESET_HOTKEY" /></label><label>Move left<input name="OVERLAY_LEFT_HOTKEY" /></label><label>Move right<input name="OVERLAY_RIGHT_HOTKEY" /></label><label>Move up<input name="OVERLAY_UP_HOTKEY" /></label><label>Move down<input name="OVERLAY_DOWN_HOTKEY" /></label><label>Scroll reply up<input name="OVERLAY_SCROLL_UP_HOTKEY" /></label><label>Scroll reply down<input name="OVERLAY_SCROLL_DOWN_HOTKEY" /></label><label>Decrease opacity<input name="OVERLAY_OPACITY_DOWN_HOTKEY" /></label><label>Increase opacity<input name="OVERLAY_OPACITY_UP_HOTKEY" /></label></div></div>
         <div class="settings-card"><div class="settings-heading"><h2>Overlay appearance</h2><p>Choose how opaque the floating reply panel is.</p></div><label>Default opacity (%)<input name="OVERLAY_OPACITY" type="number" min="30" max="100" step="1" required /><small>30% is more transparent; 100% is fully opaque. Applies when saved, on startup, and when resetting the overlay. Keyboard shortcuts can still adjust it temporarily.</small></label></div>
+        <div class="settings-card"><div class="settings-heading"><h2>Desktop</h2></div><div class="form-grid"><label>Overlay display<select name="OVERLAY_DISPLAY"><option value="primary">Primary display</option><option value="cursor">Display under cursor</option></select></label><label>Open at login<select name="AUTO_LAUNCH"><option value="off">Off</option><option value="on">On</option></select></label></div></div>
         <div class="save-bar"><span id="save-hint">Changes apply immediately after saving.</span><button type="submit" id="save-settings" class="primary">Save settings</button></div>
       </form>
     </section>
   </main>
   <script src="app.js"></script>
+  <script src="workflows.js"></script>
 </body>
 </html>

@@ -1,6 +1,11 @@
 const card = document.getElementById("card");
 const pill = document.getElementById("pill");
 const text = document.getElementById("text");
+const element = (id) => document.getElementById(id);
+let session = {};
+let stealthActive = false;
+let transcriptVisible = false;
+let modeOptions = "";
 
 function macShortcut(accelerator) {
   const symbols = { alt: "⌥", option: "⌥", shift: "⇧", control: "⌃", ctrl: "⌃", command: "⌘", cmd: "⌘", commandorcontrol: "⌘", cmdorctrl: "⌘", space: "␣", return: "↩", enter: "↩", escape: "⎋", esc: "⎋", left: "←", right: "→", up: "↑", down: "↓", tab: "⇥", backspace: "⌫", delete: "⌦", plus: "+" };
@@ -62,10 +67,14 @@ function render(state) {
   showReply(state.text || "");
   for (const [action, accelerator] of Object.entries(state.shortcuts || {})) {
     const key = document.getElementById(`shortcut-${action}`);
-    if (key) { key.textContent = macShortcut(accelerator); key.parentElement.setAttribute("aria-label", `${key.parentElement.title}: ${accelerator}`); }
+    if (key) { key.parentElement.hidden = !accelerator; key.textContent = macShortcut(accelerator); key.parentElement.setAttribute("aria-label", `${key.parentElement.title}: ${accelerator}`); }
   }
   document.getElementById("stealth-control").hidden = !state.stealth;
-  card.classList.toggle("click-through", Boolean(state.stealth));
+  stealthActive = Boolean(state.stealth);
+  element("overlay-toolbar").hidden = stealthActive;
+  element("overlay-ask").hidden = stealthActive;
+  element("overlay-transcript").hidden = stealthActive || !transcriptVisible;
+  card.classList.toggle("click-through", stealthActive);
   fitWindow();
 }
 
@@ -76,4 +85,72 @@ window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     window.copilot.dismiss();
   }
+});
+
+function updateOverlayClock() {
+  const clock = element("overlay-clock");
+  clock.hidden = !session.startedAt;
+  if (!session.startedAt) return;
+  const elapsed = Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000));
+  clock.textContent = [Math.floor(elapsed / 60), elapsed % 60].map(value => String(value).padStart(2, "0")).join(":");
+}
+
+window.copilot.onSession((next) => {
+  session = next;
+  const select = element("overlay-mode");
+  const signature = JSON.stringify(next.modes);
+  if (signature !== modeOptions) {
+    modeOptions = signature;
+    select.replaceChildren(...(next.modes || []).map(mode => new Option(mode.title, mode.id)));
+  }
+  if (next.mode) select.value = next.mode;
+  element("overlay-include-screen").checked = Boolean(next.useScreenContext);
+  updateOverlayClock();
+  element("overlay-audio").textContent = next.listening ? "Pause audio" : next.startedAt ? "Resume audio" : "Listen";
+  element("overlay-end").hidden = !next.startedAt;
+  element("overlay-stop-chat").hidden = !next.chatActive;
+  for (const id of ["overlay-audio", "overlay-end", "overlay-send", "overlay-new-chat"]) element(id).disabled = Boolean(next.busy);
+  const transcript = element("overlay-transcript");
+  const nearBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 32;
+  transcript.textContent = next.transcript || "Recognized speech will appear here.";
+  if (nearBottom) transcript.scrollTop = transcript.scrollHeight;
+  if (transcriptVisible) fitWindow();
+});
+setInterval(updateOverlayClock, 1000);
+
+async function overlayAction(action, question, screen) {
+  try { return await window.copilot.action(action, question, screen) !== false; }
+  catch (error) { showReply(error.message); fitWindow(); return false; }
+}
+
+for (const action of ["dashboard", "audio", "end", "settings", "history", "new-chat"]) {
+  element(`overlay-${action}`).addEventListener("click", () => void overlayAction(action));
+}
+element("overlay-stop-chat").addEventListener("click", () => void overlayAction("stop-chat"));
+element("overlay-hide").addEventListener("click", () => window.copilot.dismiss());
+element("overlay-transcript-toggle").addEventListener("click", (event) => {
+  transcriptVisible = !transcriptVisible;
+  event.currentTarget.setAttribute("aria-pressed", String(transcriptVisible));
+  element("overlay-transcript").hidden = stealthActive || !transcriptVisible;
+  fitWindow();
+});
+element("overlay-ask").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = element("overlay-question");
+  const ask = input.value;
+  const screen = element("overlay-include-screen").checked;
+  if (!ask.trim() && !screen && !session.startedAt) { input.focus(); return; }
+  if (await overlayAction("chat", ask, screen) && input.value === ask) input.value = "";
+});
+
+element("overlay-include-screen").addEventListener("change", () => {
+  void overlayAction("screen-context", undefined, element("overlay-include-screen").checked);
+});
+window.copilot.onAskShortcut(() => element("overlay-ask").requestSubmit());
+window.copilot.onFocusComposer(() => element("overlay-question").focus());
+window.copilot.onNewChat(() => { element("overlay-question").value = ""; });
+
+element("overlay-mode").addEventListener("change", async (event) => {
+  const select = event.currentTarget;
+  if (!(await overlayAction("mode", select.value))) select.value = session.mode;
 });

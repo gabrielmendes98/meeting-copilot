@@ -24,3 +24,12 @@ export function assertWavHasAudio(wavPath: string): void {
     );
   }
 }
+
+export function wavHasAudio(wavPath: string): boolean {
+  const buffer = fs.readFileSync(wavPath);
+  if (buffer.length - HEADER < BYTES_PER_SEC * 0.12) return false;
+  for (let offset = HEADER; offset + 1 < buffer.length; offset += 2) {
+    if (Math.abs(buffer.readInt16LE(offset)) >= 120) return true;
+  }
+  return false;
+}

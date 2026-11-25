@@ -2,6 +2,7 @@
 export interface AgentRequest {
   instructions: string;
   text?: string;
+  signal?: AbortSignal;
   images?: Array<{ data: string; mimeType: string }>;
 }
 

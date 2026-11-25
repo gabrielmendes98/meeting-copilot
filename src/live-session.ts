@@ -1,8 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { nativeBin, speechBinaryPath } from "./native-bin";
+import { wavHasAudio } from "./wav";
 import type { LiveTranscriptionSession } from "./transcription/types";
 
 export class LiveSessionError extends Error {
@@ -12,15 +14,14 @@ export class LiveSessionError extends Error {
   }
 }
 
-const MIN_WAV_BYTES = 44 + 48_000 * 2 * 2 * 0.2;
-
 function attachLineReader(
   stream: NodeJS.ReadableStream,
   onLine: (line: string) => void,
 ): void {
   let buf = "";
+  const decoder = new StringDecoder("utf8");
   stream.on("data", (chunk: Buffer) => {
-    buf += chunk.toString("utf8");
+    buf += decoder.write(chunk);
     let idx = buf.indexOf("\n");
     while (idx >= 0) {
       const line = buf.slice(0, idx).replace(/\r$/, "");
@@ -36,15 +37,15 @@ type JsonWaiter = {
   reject: (err: Error) => void;
 };
 
-export class MacosLiveSession implements LiveTranscriptionSession {
+export class RotatingLiveSession implements LiveTranscriptionSession {
   private capture: ChildProcessWithoutNullStreams | null = null;
   private speech: ChildProcessWithoutNullStreams | null = null;
   private dir: string | null = null;
   private transcript = "";
   private sttChain: Promise<void> = Promise.resolve();
-  private chunkDone = new Map<string, Promise<void>>();
+  private stopTask: Promise<void> | null = null;
   private flushWaiters: Array<{
-    resolve: (wavPath: string) => void;
+    resolve: (job: Promise<void>) => void;
     reject: (err: Error) => void;
   }> = [];
   private readyWaiter: { resolve: () => void; reject: (err: Error) => void } | null =
@@ -58,21 +59,24 @@ export class MacosLiveSession implements LiveTranscriptionSession {
   onUnexpectedExit: ((err: Error) => void) | null = null;
   onTranscript: ((text: string) => void) | null = null;
 
+  constructor(private readonly transcribe?: (file: string) => Promise<string>) {}
+
   get active(): boolean {
-    return this.capture !== null || this.speech !== null;
+    return !this.stopping && (this.capture !== null || this.speech !== null);
   }
 
   async start(): Promise<void> {
+    if (this.stopTask) await this.stopTask;
     if (this.capture || this.speech) {
       throw new LiveSessionError("Already listening.");
     }
     this.stopping = false;
     this.transcript = "";
     this.sttChain = Promise.resolve();
-    this.chunkDone.clear();
+
     this.dir = fs.mkdtempSync(path.join(os.tmpdir(), "meeting-copilot-live-"));
     try {
-      await this.startSpeech();
+      if (!this.transcribe) await this.startSpeech();
       await this.startCapture();
     } catch (err) {
       await this.stop();
@@ -81,58 +85,51 @@ export class MacosLiveSession implements LiveTranscriptionSession {
   }
 
   async flushAndTranscript(): Promise<string> {
-    if (!this.capture) throw new LiveSessionError("Not listening.");
-    const flushed = new Promise<string>((resolve, reject) => {
-      this.flushWaiters.push({ resolve, reject });
+    const capture = this.capture;
+    if (!capture || this.stopping) throw new LiveSessionError("Not listening.");
+    await new Promise<void>((resolve, reject) => {
+      function fail(error: Error) {
+        clearTimeout(timer);
+        reject(error);
+      }
+      const waiter = { resolve: (job: Promise<void>) => { clearTimeout(timer); resolve(job); }, reject: fail };
+      const timer = setTimeout(() => {
+        fail(new LiveSessionError("Timed out waiting for audio capture to flush."));
+        // The FLUSH protocol is ordered. Stop before another request can consume
+        // a response belonging to this expired request.
+        void this.stop();
+      }, 5_000);
+      this.flushWaiters.push(waiter);
+      capture.stdin.write("FLUSH\n", (error) => {
+        if (!error) return;
+        fail(new LiveSessionError(error.message));
+        void this.stop();
+      });
     });
-    try {
-      this.capture.stdin.write("FLUSH\n");
-    } catch {
-      throw new LiveSessionError("Capture is not running.");
-    }
-    const wavPath = await flushed;
-    await this.chunkDone.get(wavPath);
     return this.transcript.trim();
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    if (this.stopTask) return this.stopTask;
+    this.stopTask = this.stopHelpers().finally(() => { this.stopTask = null; });
+    return this.stopTask;
+  }
+
+  private async stopHelpers(): Promise<void> {
     this.stopping = true;
     const capture = this.capture;
     const speech = this.speech;
     this.capture = null;
     this.speech = null;
-    try {
-      capture?.stdin.write("STOP\n");
-    } catch {
-      // ignore
-    }
-    try {
-      speech?.stdin.write("STOP\n");
-    } catch {
-      // ignore
-    }
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    try {
-      capture?.kill("SIGTERM");
-    } catch {
-      // ignore
-    }
-    try {
-      speech?.kill("SIGTERM");
-    } catch {
-      // ignore
-    }
     this.rejectWaiters(new LiveSessionError("Stopped."));
-    if (this.dir) {
-      try {
-        fs.rmSync(this.dir, { recursive: true, force: true });
-      } catch {
-        // ignore
-      }
+    for (const process of [capture, speech]) {
+      if (!process) continue;
+      process.stdin.end("STOP\n");
+      process.kill("SIGTERM");
     }
+    await this.sttChain;
+    if (this.dir) fs.rmSync(this.dir, { recursive: true, force: true });
     this.dir = null;
-    this.transcript = "";
-    this.chunkDone.clear();
   }
 
   private rejectWaiters(err: Error): void {
@@ -180,15 +177,15 @@ export class MacosLiveSession implements LiveTranscriptionSession {
         },
       };
       attachLineReader(proc.stdout, (line) => this.onSpeechLine(line));
-      proc.on("exit", (code) => {
+      proc.stdin.on("error", () => {});
+      proc.on("error", (error) => this.fail(error));
+      proc.on("close", (code) => {
         if (this.speech === proc) this.speech = null;
         if (this.stopping) return;
         const err = new LiveSessionError(
           stderr.trim() || `Speech helper exited (${code ?? "?"}).`,
         );
-        this.readyWaiter?.reject(err);
-        this.speechJsonWaiter?.reject(err);
-        this.onUnexpectedExit?.(err);
+        this.fail(err);
       });
     });
   }
@@ -206,7 +203,7 @@ export class MacosLiveSession implements LiveTranscriptionSession {
         reject(err instanceof Error ? err : new LiveSessionError(String(err)));
         return;
       }
-      const proc = spawn(bin, ["--rotate", this.dir], {
+      const proc = spawn(bin, ["--rotate", this.dir, this.transcribe ? "8" : "5"], {
         stdio: ["pipe", "pipe", "pipe"],
       });
       this.capture = proc;
@@ -234,21 +231,29 @@ export class MacosLiveSession implements LiveTranscriptionSession {
         },
       };
       attachLineReader(proc.stdout, (line) => this.onCaptureLine(line));
-      proc.on("exit", (code) => {
+      proc.stdin.on("error", () => {});
+      proc.on("error", (error) => this.fail(error));
+      proc.on("close", (code) => {
         if (this.capture === proc) this.capture = null;
         if (this.stopping) return;
         const err = new LiveSessionError(
           stderr.trim() || `audio-capture exited (${code ?? "?"}).`,
         );
-        this.recordingWaiter?.reject(err);
-        for (const waiter of this.flushWaiters) waiter.reject(err);
-        this.flushWaiters = [];
-        this.onUnexpectedExit?.(err);
+        this.fail(err);
       });
     });
   }
 
+  private fail(error: Error): void {
+    if (this.stopping) return;
+    const wasStarting = this.readyWaiter !== null || this.recordingWaiter !== null;
+    this.rejectWaiters(error);
+    void this.stop().catch(() => {});
+    if (!wasStarting) this.onUnexpectedExit?.(error);
+  }
+
   private onCaptureLine(line: string): void {
+    if (this.stopping) return;
     if (line === "RECORDING") {
       this.recordingWaiter?.resolve();
       return;
@@ -264,18 +269,17 @@ export class MacosLiveSession implements LiveTranscriptionSession {
       (err) => {
         const error =
           err instanceof Error ? err : new LiveSessionError(String(err));
-        this.onUnexpectedExit?.(error);
-        void this.stop();
+        this.fail(error);
       },
     );
-    this.chunkDone.set(wavPath, job);
     if (kind === "FLUSHED") {
       const waiter = this.flushWaiters.shift();
-      waiter?.resolve(wavPath);
+      waiter?.resolve(job);
     }
   }
 
   private onSpeechLine(line: string): void {
+    if (this.stopping) return;
     if (line === "READY") {
       this.readyWaiter?.resolve();
       return;
@@ -312,26 +316,18 @@ export class MacosLiveSession implements LiveTranscriptionSession {
 
   private async transcribeChunk(wavPath: string): Promise<void> {
     try {
-      let size = 0;
-      try {
-        size = fs.statSync(wavPath).size;
-      } catch {
-        return;
-      }
-      if (size >= MIN_WAV_BYTES && this.speech) {
+      if (this.stopping || !wavHasAudio(wavPath)) return;
+      let text: string;
+      if (this.transcribe) {
+        text = await this.transcribe(wavPath);
+      } else {
         const result = await this.sendToSpeech(wavPath);
-        if (!result.ok) {
-          throw new LiveSessionError(
-            result.error ||
-              "SpeechAnalyzer failed. Allow Meeting Copilot Speech in System Settings → Privacy → Speech Recognition.",
-          );
-        }
-        if (result.text) {
-          this.transcript = this.transcript
-            ? `${this.transcript} ${result.text}`
-            : result.text;
-          this.onTranscript?.(this.transcript.trim());
-        }
+        if (!result.ok) throw new LiveSessionError(result.error || "SpeechAnalyzer failed.");
+        text = result.text;
+      }
+      if (text && !this.stopping) {
+        this.transcript = [this.transcript, text].filter(Boolean).join(" ");
+        this.onTranscript?.(this.transcript);
       }
     } finally {
       try {
@@ -374,3 +370,5 @@ export class MacosLiveSession implements LiveTranscriptionSession {
     });
   }
 }
+
+export class MacosLiveSession extends RotatingLiveSession {}

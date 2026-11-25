@@ -62,7 +62,7 @@ test('overlay paints markdown into the reply', () => {
       style: { setProperty() {}, maxHeight: '' },
       scrollTop: 0, scrollHeight: 40, clientHeight: 40, scrollBy() {},
       parentElement: { title: 'Shortcut', setAttribute() {} },
-      setAttribute() {},
+      setAttribute() {}, addEventListener() {},
       classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
     };
     elements.set(id, el);
@@ -71,11 +71,11 @@ test('overlay paints markdown into the reply', () => {
   let handler;
   vm.runInNewContext(`${fs.readFileSync('src/overlay/markdown.js', 'utf8')}\n${fs.readFileSync('src/overlay/overlay.js', 'utf8')}`, {
     window: {
-      copilot: { onState(fn) { handler = fn; }, onScroll() {}, resize() {} },
+      copilot: { onState(fn) { handler = fn; }, onScroll() {}, onSession() {}, onAskShortcut() {}, onFocusComposer() {}, onNewChat() {}, resize() {} },
       addEventListener() {},
     },
     document: { getElementById: (id) => elements.get(id) || element(id) },
-    requestAnimationFrame(fn) { fn(); },
+    requestAnimationFrame(fn) { fn(); }, setInterval() {},
   });
   handler({ status: 'answer', text: '## Next step\n\n- **Ship** the <b>notes</b>', opacity: 0.8, stealth: false, shortcuts: {} });
   const html = elements.get('text').innerHTML;

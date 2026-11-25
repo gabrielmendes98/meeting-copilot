@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { app } from "electron";
 
 export function nativeBin(name: string): string {
+  const { app } = require("electron") as typeof import("electron");
   const packaged = path.join(process.resourcesPath, name);
   const dev = path.join(__dirname, "bin", name);
   if (app.isPackaged && fs.existsSync(packaged)) return packaged;
@@ -13,6 +13,7 @@ export function nativeBin(name: string): string {
 }
 
 export function speechAppPath(): string {
+  const { app } = require("electron") as typeof import("electron");
   const packaged = path.join(
     process.resourcesPath,
     "Meeting Copilot Speech.app",

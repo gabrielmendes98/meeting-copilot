@@ -2,12 +2,18 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const os = require('node:os');
 const vm = require('node:vm');
 const { settingDefaults, shortcutKeys } = require('../dist/settings-config');
 
-test('Dock lifecycle and settings IPC enforce trusted senders and roll back shortcut conflicts', async () => {
+test('Dock lifecycle and settings IPC enforce trusted senders and roll back shortcut conflicts', async (context) => {
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'meeting-copilot-test-'));
+  context.after(() => fs.rmSync(storage, { force: true, recursive: true }));
   const windows = [], trays = [], events = {}, handlers = {}, shortcuts = new Map();
   let saves = 0, resets = 0, listening = false, dockShown = false, activationPolicy, failStart = false, announceDuringStart = "";
+  let tail = "", providerNotesFail = false, waitForCancellation = false;
+  let signalReady;
+  const requests = [];
   let regionCaptures = 0, primaryCaptures = 0, copied = "", missingAgent = [], primaryError = null, hiddenDuringPrimary = false;
   const environment = { OVERLAY_OPACITY: '60' };
   class Window {
@@ -16,12 +22,14 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
       this.bounds = { x: options.x || 0, y: options.y || 0, width: options.width, height: options.height };
       this.messages = [];
       this.events = {}; this.visible = false; this.destroyed = false;
-      this.webContents = { mainFrame: {}, send: (...message) => this.messages.push(message), on() {}, setWindowOpenHandler() {} };
+      this.webEvents = {};
+      this.webContents = { mainFrame: {}, isLoadingMainFrame: () => false, send: (...message) => this.messages.push(message),
+        on: (name, handler) => { this.webEvents[name] = handler; }, setWindowOpenHandler() {} };
       windows.push(this);
     }
     on(name, handler) { this.events[name] = handler; }
     loadFile() {} show() { this.visible = true; } hide() { this.visible = false; }
-    showInactive() { this.visible = true; } focus() {} isMinimized() { return false; } isDestroyed() { return this.destroyed; }
+    showInactive() { this.visible = true; } focus() {} isFocused() { return true; } isMinimized() { return false; } isDestroyed() { return this.destroyed; }
     setVisibleOnAllWorkspaces() {} setAlwaysOnTop() {}
     setContentProtection(value) { this.protected = value; }
     setSkipTaskbar(value) { this.skipTaskbar = value; }
@@ -34,15 +42,18 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
     setBounds(value) { this.bounds = value; }
   }
   const app = {
-    setName() {}, requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(),
+    getPath: () => storage, setName() {}, requestSingleInstanceLock: () => true, whenReady: () => Promise.resolve(),
     on: (name, handler) => { events[name] = handler; },
     setActivationPolicy: (value) => { activationPolicy = value; },
     dock: { async show() { dockShown = true; }, hide() { dockShown = false; }, setIcon() {} },
   };
+  let currentSegment = "";
   const transcription = {
     get active() { return listening; }, supportsLive: true, onTranscript: null,
     async dispose() {}, async stop() { listening = false; },
+    async flushAndTranscript() { return tail || currentSegment; },
     async start() {
+      currentSegment = "";
       if (announceDuringStart && this.onTranscript) this.onTranscript(announceDuringStart);
       if (failStart) throw new Error('could not listen');
       listening = true;
@@ -62,18 +73,33 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
     },
     './capture': { SystemAudioCapture: class { active = false; kill() {} async start() { this.active = true; } async stop() { this.active = false; return '/tmp/copilot-test-no-audio.wav'; } } },
     './agent': {
+      async generateMeetingNotes(text) {
+        if (providerNotesFail) throw new Error('offline');
+        return `Summary of ${text}`;
+      },
+      async askWithContext(input, onText) {
+        requests.push(input); onText('Partial answer');
+        if (waitForCancellation) await new Promise((_resolve, reject) => {
+          input.signal.addEventListener('abort', () => reject(input.signal.reason), { once: true });
+          signalReady();
+        });
+        return 'Final answer';
+      },
       async warmAgent() {}, async resetAgent() { resets++; },
       async askFromScreenshot() { return 'region answer'; },
       async askFromFullScreenshot(_png, onText) { onText('full answer'); return 'full answer'; },
     },
-    './transcribe': { transcription, pickProvider: () => 'macos', async resetTranscription() { resets++; } },
+    './transcribe': { transcription, async resetTranscription() { resets++; }, async transcribeWav() { return 'Cloud clip'; } },
     './settings': {
       loadSettings() {}, publicSettings: () => ({ values: { ...settingDefaults, ...environment } }),
       saveSettings: (input) => { saves++; Object.assign(environment, input); },
     },
     './settings-config': require('../dist/settings-config'),
     './overlay-layout': require('../dist/overlay-layout'),
-    './context-files': {}, './wav': {},
+    './context-files': {}, './wav': { assertWavHasAudio() {} },
+    './meeting-history': require('../dist/meeting-history'),
+    './meeting-modes': require('../dist/meeting-modes'),
+    './transcription/config': require('../dist/transcription/config'),
     './screenshot': {
       async captureRegion() { regionCaptures++; return '/tmp/region.png'; },
       async capturePrimaryDisplay() {
@@ -85,18 +111,11 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
     },
     './env': {
       loadEnv() {}, missingKeys: () => [], missingAgentKeys: () => missingAgent,
-      hotkey: () => environment.HOTKEY || settingDefaults.HOTKEY,
-      checkpointHotkey: () => environment.CHECKPOINT_HOTKEY || settingDefaults.CHECKPOINT_HOTKEY,
-      summaryHotkey: () => environment.SUMMARY_HOTKEY || settingDefaults.SUMMARY_HOTKEY,
-      briefingHotkey: () => environment.BRIEFING_HOTKEY || settingDefaults.BRIEFING_HOTKEY,
-      screenshotHotkey: () => environment.SCREENSHOT_HOTKEY || settingDefaults.SCREENSHOT_HOTKEY,
-      fullScreenshotHotkey: () => environment.FULL_SCREENSHOT_HOTKEY || settingDefaults.FULL_SCREENSHOT_HOTKEY,
-      stealthHotkey: () => environment.STEALTH_HOTKEY || settingDefaults.STEALTH_HOTKEY,
     },
   };
   const sandbox = {
     exports: {}, __dirname: path.resolve('dist'), process: { platform: 'darwin', env: environment },
-    Buffer, console, setTimeout,
+    AbortController, Buffer, console, setTimeout,
     require: (name) => Object.hasOwn(dependencies, name) ? dependencies[name] : require(name),
   };
   vm.runInNewContext(fs.readFileSync(path.resolve('dist/main.js'), 'utf8') + '\nglobalThis.setBusyForTest = setBusy; globalThis.registerHotkeysForTest = registerHotkeys; globalThis.sendStateForTest = sendState; globalThis.resizeOverlayForTest = resizeOverlay; globalThis.opacityForTest = () => overlayOpacity;', sandbox);
@@ -122,6 +141,21 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.equal(shortcuts.has('Alt+8'), true);
   assert.equal(windows[0].messages.at(-1)[1].opacity, 0.7, 'saving a default applies it immediately');
   // The restore shortcut must remain available even while an agent is busy.
+  shortcuts.get(settingDefaults.SETTINGS_HOTKEY)();
+  assert.deepEqual(main.messages.at(-1), ['app-open-page', 'settings']);
+  shortcuts.get(settingDefaults.SCREEN_ASSIST_HOTKEY)();
+  assert.deepEqual(main.messages.at(-1), ['app-ask-shortcut']);
+  let consumed = false;
+  main.webEvents['before-input-event']({ preventDefault() { consumed = true; } },
+    { type: 'keyDown', code: 'Backslash', key: '\\', meta: true });
+  assert.equal(consumed, true);
+  assert.equal(windows[0].visible, true);
+  shortcuts.get(settingDefaults.OVERLAY_TOGGLE_HOTKEY)();
+  assert.equal(windows[0].visible, false);
+  handlers['app-screen-context'](event, true);
+  assert.equal(handlers['app-state'](event).useScreenContext, true);
+  handlers['app-screen-context'](event, false);
+  await assert.rejects(handlers['app-action'](event, 'checkpoint'), /Unknown action/);
   sandbox.setBusyForTest(true);
   await assert.rejects(handlers['app-action']({ sender: windows[0].webContents }, 'stealth'), /Unauthorized/);
   await handlers['app-action'](event, 'stealth');
@@ -151,7 +185,7 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.equal(windows[0].visible, false, 'streaming must not reveal an explicitly hidden overlay');
   shortcuts.get(settingDefaults.OVERLAY_TOGGLE_HOTKEY)();
   assert.equal(windows[0].visible, true);
-  assert.equal(windows[0].messages.at(-1)[1].text, 'Streaming reply');
+  assert.equal(windows[0].messages.findLast(([channel]) => channel === 'overlay-state')[1].text, 'Streaming reply');
   const startX = windows[0].bounds.x;
   shortcuts.get(settingDefaults.OVERLAY_RIGHT_HOTKEY)();
   assert.equal(windows[0].bounds.x, startX + 40);
@@ -186,12 +220,12 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   await handlers['app-action'](event, 'capture');
   assert.equal(listening, false);
   assert.equal(windows[0].visible, true, 'stopping live recording must retain the overlay');
-  assert.equal(windows[0].messages.at(-1)[1].text, 'Streaming reply');
+  assert.equal(windows[0].messages.findLast(([channel]) => channel === 'overlay-state')[1].text, 'Streaming reply');
   transcription.supportsLive = false;
   await handlers['app-action'](event, 'capture');
   await handlers['app-action'](event, 'capture');
   assert.equal(windows[0].visible, true, 'stopping a clip must retain the overlay');
-  assert.equal(windows[0].messages.at(-1)[1].text, 'Streaming reply');
+  assert.equal(handlers['app-state'](event).transcript, 'Cloud clip');
   transcription.supportsLive = true;
   // A conflicting replacement restores every old shortcut, including the exit shortcut.
   await assert.rejects(handlers['app-save-settings'](event, { ...settingDefaults, STEALTH_HOTKEY: 'Alt+9' }), /Cannot register/);
@@ -209,14 +243,63 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   await handlers['app-action'](event, 'capture');
   assert.equal(listening, true);
   assert.equal(handlers['app-state'](event).transcript, '');
-  transcription.onTranscript('Kept after stop');
+  currentSegment = 'Kept after stop';
+  transcription.onTranscript(currentSegment);
   await handlers['app-action'](event, 'capture');
   assert.equal(listening, false);
   assert.equal(handlers['app-state'](event).transcript, 'Kept after stop');
+  let matches = handlers['app-history-list'](event, 'kept after');
+  assert.equal(matches.length, 1);
+  const archived = handlers['app-history-get'](event, matches[0].id);
+  assert.equal(archived.notes, 'Summary of Kept after stop');
+  await assert.rejects(handlers['app-chat']({ sender: windows[0].webContents }, 'unauthorized'), /Unauthorized/);
+  const custom = handlers['app-mode-update'](event, 'save', null, 'Custom', 'Talk about deployment.', ['release-notes']);
+  assert.equal(custom.modes.find(mode => mode.id === custom.selected).instructions, 'Talk about deployment.');
+  await handlers['app-chat'](event, 'What should I say?', false, false);
+  await handlers['app-chat'](event, 'What about the second point?', false, true);
+  assert.equal(requests.at(-1).history[0].question, 'What should I say?');
+  assert.equal(requests.at(-1).mode, 'Talk about deployment.');
+  assert.equal(requests.at(-1).referenceIds[0], 'release-notes');
+  assert.equal(requests.at(-1).smart, true);
+  waitForCancellation = true;
+  const started = new Promise(resolve => { signalReady = resolve; });
+  const stopped = handlers['app-chat'](event, 'Question to cancel', false, false);
+  await started;
+  assert.equal(handlers['app-state'](event).chatActive, true);
+  handlers['app-chat-cancel'](event);
+  assert.equal(await stopped, false);
+  assert.equal(handlers['app-state'](event).chatActive, false);
+  assert.equal(handlers['app-state'](event).conversation.length, 2);
+  assert.equal(handlers['app-state'](event).latestReply, 'Final answer');
+  waitForCancellation = false;
+  shortcuts.get(settingDefaults.CLEAR_CHAT_HOTKEY)();
+  assert.deepEqual(main.messages.at(-1), ['app-new-chat']);
+  assert.equal(handlers['app-state'](event).conversation.length, 0);
+  assert.equal(await handlers['app-history-ask'](event, archived.id, 'What was said?', ''), 'Final answer');
+  assert.equal(requests.at(-1).archive, true);
+  assert.match(requests.at(-1).transcript, /Kept after stop/);
+
+  await handlers['app-action'](event, 'capture');
+  tail = 'First segment, including the tail';
+  await handlers['app-action'](event, 'pause');
+  assert.equal(listening, false);
+  assert.ok(handlers['app-state'](event).sessionStartedAt);
+  await handlers['app-action'](event, 'capture');
+  tail = 'Final segment';
+  providerNotesFail = true;
+  await handlers['app-action'](event, 'capture');
+  assert.equal(handlers['app-state'](event).sessionStartedAt, null);
+  matches = handlers['app-history-list'](event, 'first final');
+  assert.equal(matches.length, 1);
+  const recovered = handlers['app-history-get'](event, matches[0].id);
+  assert.equal(recovered.transcript, 'First segment, including the tail\n\nFinal segment');
+  assert.equal(recovered.notes, '');
+  providerNotesFail = false;
+  tail = '';
   failStart = true;
   await handlers['app-action'](event, 'capture');
   assert.equal(listening, false);
-  assert.equal(handlers['app-state'](event).transcript, 'Kept after stop');
+  assert.equal(handlers['app-state'](event).transcript, 'First segment, including the tail\n\nFinal segment');
   announceDuringStart = '';
   await handlers['app-action'](event, 'screenshot');
   assert.equal(regionCaptures, 1);
@@ -229,11 +312,11 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.equal(main.visible, true);
   assert.equal(windows[0].visible, true);
   assert.equal(copied, 'full answer');
-  assert.equal(windows[0].messages.at(-1)[1].text, 'full answer');
+  assert.equal(windows[0].messages.findLast(([channel]) => channel === 'overlay-state')[1].text, 'full answer');
   primaryError = new Error('Could not capture the primary display. Check Screen Recording permission.');
   await handlers['app-action'](event, 'full-screenshot');
   assert.equal(main.visible, true);
-  assert.match(windows[0].messages.at(-1)[1].text, /Screen Recording permission/);
+  assert.match(windows[0].messages.findLast(([channel]) => channel === 'overlay-state')[1].text, /Screen Recording permission/);
   primaryError = null;
   sandbox.setBusyForTest(true);
   await handlers['app-action'](event, 'full-screenshot');
@@ -242,7 +325,7 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   missingAgent = ['AGENT_API_KEY'];
   await handlers['app-action'](event, 'full-screenshot');
   assert.equal(primaryCaptures, 2);
-  assert.match(windows[0].messages.at(-1)[1].text, /API keys/);
+  assert.match(windows[0].messages.findLast(([channel]) => channel === 'overlay-state')[1].text, /API keys/);
   missingAgent = [];
   announceDuringStart = 'Partial';
   await handlers['app-action'](event, 'capture');

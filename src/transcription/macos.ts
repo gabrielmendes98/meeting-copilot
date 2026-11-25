@@ -34,7 +34,10 @@ export class MacosTranscriptionProvider implements TranscriptionProvider {
         return;
       }
 
-      const proc = this.launch("open", ["-W", "-n", "-a", appPath, "--args", wavPath, outPath], {
+      const args = ["-W", "-n", "-a", appPath, "--args", wavPath, outPath];
+      const locale = process.env.MEETING_AUDIO_LANGUAGE;
+      if (locale && locale !== "en-US") args.push("--locale", locale);
+      const proc = this.launch("open", args, {
         stdio: ["ignore", "pipe", "pipe"],
       });
       let stderr = "";

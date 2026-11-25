@@ -18,15 +18,23 @@ enum TranscribeError: LocalizedError {
         case .denied:
             return "Speech Recognition was denied. In System Settings, allow Meeting Copilot Speech."
         case .unavailable:
-            return "SpeechAnalyzer English transcription is unavailable on this Mac. macOS 26+ is required."
+            return "SpeechAnalyzer transcription for this language is unavailable on this Mac. macOS 26+ is required."
         case .empty:
             return "Transcription came back empty."
         case .assets:
-            return "Could not download the on-device English speech model. Check the network and try again."
+            return "Could not download the on-device speech model. Check the network and try again."
         case .failed(let message):
             return message
         }
     }
+}
+
+func speechLocale() -> String {
+    let args = CommandLine.arguments
+    if let position = args.firstIndex(of: "--locale"), args.indices.contains(position + 1) {
+        return args[position + 1]
+    }
+    return ProcessInfo.processInfo.environment["MEETING_AUDIO_LANGUAGE"] ?? "en-US"
 }
 
 func requestAuth() async -> SFSpeechRecognizerAuthorizationStatus {
@@ -51,7 +59,7 @@ func mappedSpeechError(_ error: Error) -> Error {
 func transcribeWithAnalyzer(wav: URL, allowEmpty: Bool = false) async throws -> String {
     guard SpeechTranscriber.isAvailable else { throw TranscribeError.unavailable }
 
-    let requested = Locale(identifier: "en-US")
+    let requested = Locale(identifier: speechLocale())
     guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requested) else {
         throw TranscribeError.unavailable
     }
@@ -105,7 +113,7 @@ func transcribeWithAnalyzer(wav: URL, allowEmpty: Bool = false) async throws -> 
 @available(macOS 26, *)
 func prepareSpeechAssets() async throws {
     guard SpeechTranscriber.isAvailable else { throw TranscribeError.unavailable }
-    let requested = Locale(identifier: "en-US")
+    let requested = Locale(identifier: speechLocale())
     guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: requested) else {
         throw TranscribeError.unavailable
     }

@@ -24,13 +24,23 @@ function populateModels(provider, selected) {
     const option = document.createElement("option");
     option.value = model.id; option.textContent = model.name; select.append(option);
   }
-  // Preserve existing .env or saved custom models without silently replacing them.
-  if (selected && !choices.some(model => model.id === selected)) {
-    const option = document.createElement("option");
-    option.value = selected; option.textContent = "Previously configured model"; select.append(option);
-  }
-  select.value = selected || choices[0].id;
+  const option = document.createElement("option");
+  option.value = "__custom__"; option.textContent = "Custom model…"; select.append(option);
+  const custom = selected && !choices.some(model => model.id === selected);
+  select.value = custom ? "__custom__" : selected || choices[0].id;
+  $("custom-model").value = custom ? selected : "";
+  updateCustomModelField();
 }
+function selectedModel() {
+  const model = form.elements.AGENT_MODEL.value;
+  return model === "__custom__" ? $("custom-model").value : model;
+}
+function updateCustomModelField() {
+  const custom = form.elements.AGENT_MODEL.value === "__custom__";
+  $("custom-model-field").hidden = !custom;
+  $("custom-model").required = custom;
+}
+
 let state;
 let saving = false;
 let files = [];
@@ -54,8 +64,31 @@ function showPage(page) {
   });
   document.querySelector("main").scrollTop = 0;
 }
-function shortcut(value) { return value.replace(/CommandOrControl|CmdOrCtrl|Command|Cmd/gi, "⌘").replace(/Control|Ctrl/gi, "⌃").replace(/Option|Alt/gi, "⌥").replace(/Shift/gi, "⇧").replaceAll("+", " "); }
+function shortcut(value = "") { return value.replace(/CommandOrControl|CmdOrCtrl|Command|Cmd/gi, "⌘").replace(/Control|Ctrl/gi, "⌃").replace(/Option|Alt/gi, "⌥").replace(/Shift/gi, "⇧").replaceAll("+", " "); }
 function populateSettings(settings) {
+  for (const [key, fallback] of Object.entries(settings.shortcutDefaults || {})) {
+    const input = form.elements[key];
+    if (!input || input.parentElement.querySelector(".reset-shortcut")) continue;
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "text-button reset-shortcut";
+    reset.textContent = "Reset";
+    reset.setAttribute("aria-label", `Reset ${input.parentElement.firstChild.textContent.trim()} shortcut`);
+    reset.addEventListener("click", () => { input.value = fallback; });
+    input.after(reset);
+  }
+  if (state?.languages && typeof Option === "function") {
+    document.querySelectorAll("[data-language]").forEach(select => {
+      select.replaceChildren(...Object.entries(state.languages).map(([code, name]) => new Option(name, code)));
+    });
+    const select = form.elements.OVERLAY_DISPLAY;
+    select.replaceChildren(new Option("Primary display", "primary"), new Option("Display under cursor", "cursor"));
+    for (const display of state.displays) select.append(new Option(display.label, display.id));
+    const savedDisplay = settings.values.OVERLAY_DISPLAY;
+    if (!Array.from(select.options).some(option => option.value === savedDisplay)) {
+      select.append(new Option("Disconnected display", savedDisplay));
+    }
+  }
   for (const [key, value] of Object.entries(settings.values)) { if (form.elements[key]) form.elements[key].value = value; }
   modelProvider = settings.values.AGENT_PROVIDER;
   modelSelections[modelProvider] = settings.values.AGENT_MODEL;
@@ -70,13 +103,13 @@ function updateSpeechField() { $("stt-key-field").hidden = form.elements.STT_PRO
 function renderTranscript() {
   const body = $("transcript");
   const text = typeof state.transcript === "string" ? state.transcript.trim() : "";
-  const visible = Boolean(state.live && text);
+  const visible = Boolean(text);
   const distanceFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
   body.textContent = visible
     ? text
     : state.live
       ? "Start listening from Meeting. Recognized speech will appear here and stay until the next meeting starts."
-      : "Live transcription needs the macOS speech provider. Choose it in Settings.";
+      : "Cloud transcripts appear when you pause or stop recording.";
   body.classList.toggle("empty", !visible);
   if (visible && distanceFromBottom <= 48) body.scrollTop = body.scrollHeight;
   $("copy-transcript").disabled = !visible;
@@ -89,24 +122,30 @@ function render(next) {
   $("sidebar-status").textContent = busy ? "Copilot is working" : listening ? (live ? "Listening to your meeting" : "Recording your meeting") : "Ready when you are";
   $("session-title").textContent = listening ? (live ? "Listening to the conversation" : "Recording a meeting clip") : "Ready for your next meeting";
   $("session-description").textContent = listening ? (live ? "Ask for help at any point. Listening continues." : "Choose an action to stop and transcribe this clip.") : "Capture the conversation from your meeting app.";
-  $("capture").firstChild.textContent = listening ? (live ? "Stop listening " : "Stop recording ") : (live ? "Start listening " : "Start recording ");
-  const shortcuts = { "record-shortcut": "HOTKEY", "answer-shortcut": "CHECKPOINT_HOTKEY", "summary-shortcut": "SUMMARY_HOTKEY", "notes-shortcut": "BRIEFING_HOTKEY", "screenshot-shortcut": "SCREENSHOT_HOTKEY", "full-screenshot-shortcut": "FULL_SCREENSHOT_HOTKEY", "stealth-shortcut": "STEALTH_HOTKEY" };
-  for (const [id, key] of Object.entries(shortcuts)) $(id).textContent = shortcut(settings.values[key]);
+  $("capture").firstChild.textContent = listening ? (live ? "End session " : "Stop recording ") : next.sessionStartedAt ? "Resume audio " : "Listen ";
+  const shortcuts = {
+    "record-shortcut": "HOTKEY", "ask-shortcut": "SCREEN_ASSIST_HOTKEY", "new-chat-shortcut": "CLEAR_CHAT_HOTKEY",
+    "screenshot-shortcut": "SCREENSHOT_HOTKEY", "full-screenshot-shortcut": "FULL_SCREENSHOT_HOTKEY", "stealth-shortcut": "STEALTH_HOTKEY",
+  };
+  for (const [id, key] of Object.entries(shortcuts)) {
+    const label = $(id);
+    label.textContent = shortcut(settings.values[key]);
+    label.hidden = !label.textContent;
+  }
   document.querySelectorAll("[data-action]").forEach((button) => {
-    const action = button.dataset.action;
-    button.disabled = action === "stealth" ? !next.stealthAvailable : busy || (["checkpoint", "summary", "briefing"].includes(action) && !listening);
+    button.disabled = button.dataset.action === "stealth" ? !next.stealthAvailable : busy;
   });
   $("stealth-hint").textContent = next.stealthAvailable ? `Press ${shortcut(settings.values.STEALTH_HOTKEY)} to restore the app, even while it is working. Restarting restores normal mode.` : "Stealth mode requires macOS and an available restore shortcut. Check Settings for shortcut conflicts.";
   $("configuration-banner").hidden = !next.configurationError;
   $("configuration-message").textContent = next.configurationError;
   const isError = overlay.status === "error";
   const text = isError ? overlay.text : busy && overlay.text ? overlay.text : next.latestReply;
-  $("reply").textContent = text || "Start listening, then ask your copilot for an answer or summary.\nYour response will appear here and in the floating overlay.";
+  $("reply").textContent = text || "Your response will appear here and in the floating overlay.";
   $("reply").classList.toggle("empty", !text);
   $("reply-heading").textContent = isError ? "Something needs attention" : busy ? "Your copilot is working…" : "Your copilot’s response";
   $("copy-reply").disabled = !next.latestReply;
   renderTranscript();
-  $("save-settings").disabled = busy || listening || saving;
+  $("save-settings").disabled = busy || listening || Boolean(next.sessionStartedAt) || saving;
   $("save-hint").textContent = listening ? "Stop listening before saving settings." : busy ? "Wait for the current action to finish." : "Changes apply immediately after saving.";
 }
 function renderFiles(next) {
@@ -158,19 +197,20 @@ $("context-text-form").addEventListener("submit", async (event) => {
 });
 form.elements.STT_PROVIDER.addEventListener("change", updateSpeechField);
 form.elements.AGENT_PROVIDER.addEventListener("change", () => {
-  modelSelections[modelProvider] = form.elements.AGENT_MODEL.value;
+  modelSelections[modelProvider] = selectedModel();
   modelProvider = form.elements.AGENT_PROVIDER.value;
   populateModels(modelProvider, modelSelections[modelProvider]);
 });
+form.elements.AGENT_MODEL.addEventListener("change", updateCustomModelField);
 form.addEventListener("submit", async (event) => {
   event.preventDefault(); saving = true; $("save-settings").disabled = true;
-  try { populateSettings(await api.saveSettings(Object.fromEntries(new FormData(form)))); notify("Settings saved. Your copilot is ready to use them."); }
+  try { populateSettings(await api.saveSettings({ ...Object.fromEntries(new FormData(form)), AGENT_MODEL: selectedModel() })); notify("Settings saved. Your copilot is ready to use them."); }
   catch (error) { notify(error.message, true); }
   finally { saving = false; if (state) render(state); }
 });
 api.onState(render);
 async function initialize() {
-  try { const initial = await api.getState(); populateSettings(initial.settings); render(initial); }
+  try { const initial = await api.getState(); render(initial); populateSettings(initial.settings); }
   catch (error) { notify(error.message, true); }
   try { renderFiles(await api.listContext()); } catch (error) { notify(error.message, true); }
   try {

@@ -271,3 +271,15 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+.drag-handle { -webkit-app-region: drag; color: var(--muted); padding: 4px 8px; cursor: grab; }
+.click-through .drag-handle { -webkit-app-region: no-drag; }
+.overlay-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 16px; color: var(--ink); font-size: 12px; opacity: var(--text-opacity, 1); }
+.overlay-toolbar button, .overlay-toolbar select, .overlay-toolbar input:not([type="checkbox"]) { background: #252c41; color: var(--ink); border: 1px solid #535f7e; border-radius: 7px; padding: 5px 9px; font: inherit; }
+.overlay-toolbar button { cursor: pointer; }
+.overlay-toolbar button:disabled { opacity: 0.55; }
+.overlay-toolbar button:focus-visible, .overlay-toolbar input:focus-visible { outline: 2px solid var(--accent); }
+.overlay-toolbar input:not([type="checkbox"]) { flex: 1; min-width: 160px; }
+.overlay-toolbar label { display: flex; align-items: center; gap: 4px; }
+.transcript { flex: 0 1 auto; min-height: 32px; max-height: 160px; color: var(--ink); white-space: pre-wrap; }
+#overlay-clock { font-variant-numeric: tabular-nums; }

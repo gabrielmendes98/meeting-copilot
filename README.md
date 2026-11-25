@@ -76,43 +76,38 @@ npm start
 
 With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
 
-1. The app opens a full workspace window and appears in the Dock, alongside its ribbon M menu-bar icon. The **Meeting** page provides listening, answer, summary, notes, screenshot, and copy controls. Closing the workspace keeps the app and meeting session running; reopen it from the Dock or **Open Meeting Copilot** in the tray menu. Use **Quit** to stop the app.
+1. The app opens a full workspace window and appears in the Dock, alongside its ribbon M menu-bar icon. The **Meeting** page provides listening, contextual chat, screenshot, and copy controls. Closing the workspace keeps the app and meeting session running; reopen it from the Dock or **Open Meeting Copilot** in the tray menu. Use **Quit** to stop the app.
 
    **Settings** configures the AI provider, model, API keys, transcription provider, and shortcuts. The Model dropdown displays names and updates for the selected provider: OpenAI includes GPT-4.1 mini, GPT-4.1, GPT-4o mini, and GPT-4o; Cursor includes Composer 2.5 and Automatic. Switching providers remembers your selections while editing. Existing custom model IDs remain available as **Previously configured model**; new custom IDs can still be configured through `.env`. Availability depends on your provider account. Save while idle to apply changes immediately. Shortcut conflicts leave your previous settings intact. Keys are encrypted using Electron's macOS-backed `safeStorage`; the renderer receives only whether a key exists. Saved settings in the app's user-data directory override `.env` on subsequent launches. Leaving an API-key field blank preserves the existing key.
 
-   **Context library** accepts multiple PDF, DOCX, TXT, Markdown, CSV, and JSON documents together, plus freeform text in **Direct context**. Click **Save text** to apply or clear your notes. Readable document text is extracted locally and saved between launches; all ready documents and saved notes are sent together to the selected AI provider with every answer, summary, briefing, and screenshot request. Imported documents are snapshots: remove and re-add to update them. Removing an entry leaves the original file intact. Files can be up to 20 MB each, with a combined limit of 120,000 characters for documents and notes; content is never silently truncated. Failed imports display a reason and are excluded, while other documents remain usable. Scanned PDFs need OCR first, and password-protected or invalid documents may not be readable. Existing file references remain usable as long as their originals are accessible; re-import them to save a snapshot.
+   **Context library** accepts multiple PDF, DOCX, TXT, Markdown, CSV, and JSON documents together, plus freeform text in **Direct context**. Click **Save text** to apply or clear your notes. Readable document text is extracted locally and saved between launches; all ready documents and saved notes are sent together to the selected AI provider with live chat and screenshot requests according to your selected mode. Imported documents are snapshots: remove and re-add to update them. Removing an entry leaves the original file intact. Files can be up to 20 MB each, with a combined limit of 120,000 characters for documents and notes; content is never silently truncated. Failed imports display a reason and are excluded, while other documents remain usable. Scanned PDFs need OCR first, and password-protected or invalid documents may not be readable. Existing file references remain usable as long as their originals are accessible; re-import them to save a snapshot.
 
-   **Stealth mode** (macOS): use **Enter stealth mode** on the Meeting page, the menu-bar action, or `Option+Shift+S`. The workspace hides, the Dock / Cmd+Tab entry and menu-bar icon disappear, both windows are hidden from Mission Control, and the floating reply overlay stays visible locally. In stealth, the overlay is non-focusable and click-through: clicking it interacts with the meeting or editor underneath. All meeting and overlay hotkeys continue working. Press `Option+Shift+S` again to restore the workspace, Dock, and menu-bar icon, including while an agent is busy. Change shortcuts in Settings; stealth is unavailable if the restore shortcut cannot be registered. `Option+Shift+B` hides or shows the overlay without exiting stealth, retaining its latest content; streaming updates will not reveal a panel you explicitly hid. Outside stealth, Esc also hides the panel. Reopening the application while stealth is active does not reveal the workspace. Stealth is not persisted: restarting returns to normal mode.
+   **Stealth mode** (macOS): use **Enter stealth mode** on the Meeting page, the menu-bar action, or `Option+Shift+S`. The workspace hides, the Dock / Cmd+Tab entry and menu-bar icon disappear, both windows are hidden from Mission Control, and the floating reply overlay stays visible locally. In stealth, the overlay is non-focusable and click-through: clicking it interacts with the meeting or editor underneath. All meeting and overlay hotkeys continue working. Press `Option+Shift+S` again to restore the workspace, Dock, and menu-bar icon, including while an agent is busy. Change shortcuts in Settings; stealth is unavailable if the restore shortcut cannot be registered. `Cmd+Backslash` hides or shows the overlay without exiting stealth, retaining its latest content; streaming updates will not reveal a panel you explicitly hid. Outside stealth, Esc also hides the panel. Reopening the application while stealth is active does not reveal the workspace. Stealth is not persisted: restarting returns to normal mode.
 
    Screen-share exclusion is **best effort**, not a guarantee of invisibility in Google Meet, Slack, or Microsoft Teams. Stealth uses Electron’s `setContentProtection(true)` on both app windows; [Electron documents that macOS ScreenCaptureKit can still capture protected windows](https://www.electronjs.org/docs/latest/api/browser-window#winsetcontentprotectionenable-macos-windows). Share a specific meeting/application window and verify the remote view before relying on exclusion. Native permission prompts and the screenshot selection interface are not protected app windows. To quit from Terminal while hidden, find the main process with `pgrep -fl 'Meeting Copilot|Electron'`, then run `kill <PID>` using the main app PID. When using `npm run dev` or `npm start`, you can also stop the launch terminal with Ctrl+C.
 
-2. `Option+Space` starts **continuous** listening. The overlay shows **Recording**. Esc hides the overlay; listening keeps going (a ● stays in the menu bar).
-3. While listening:
-   - `Option+1` checkpoints: transcribes the latest audio and asks for a spoken English reply to the last question, using the whole call as context.
-   - `Option+2` summarizes what has been said so far.
-   - `Option+3` summarizes and adds concerns and useful questions.
-4. `Option+Space` again **stops** listening (or use **Stop listening** in the menu-bar menu / Quit). The overlay stays visible with your latest reply, or a ready message when there is no reply. Hide it explicitly with `Option+Shift+B` (or Esc when the overlay has focus).
+2. `Cmd+Shift+Backslash` starts or ends listening. Use **Pause audio** during a session to pause capture without closing the session, and **Resume audio** to continue.
+3. Type a message and press `Cmd+Enter` to ask AI. Use **Use screen context** to include the current display. During a session you can submit without typing to ask about the latest context.
+4. Ending a session with a transcript saves it under **History** and requests meeting notes from the configured AI provider.
 
-With `openai` / `groq`: `Option+Space` starts and stops a clip, keeping the overlay visible after stopping. `Option+1` / `Option+2` / `Option+3` stop the clip, transcribe it, and run the matching action.
+| Action | Default on macOS |
+| --- | --- |
+| Show or hide overlay | `Cmd+Backslash` |
+| Ask about screen or audio | `Cmd+Enter` |
+| New chat | `Cmd+R` |
+| Open Settings | `Cmd+Comma` |
+| Start or end session | `Cmd+Shift+Backslash` |
+| Move overlay | `Cmd+Arrow` |
+| Scroll reply | `Cmd+Shift+Up/Down` |
+| Toggle stealth or restore app | `Option+Shift+S` |
+| Change opacity | `Option+Shift+-` / `Option+Shift+=` |
+| Center panel / reset opacity | `Option+Shift+0` |
 
-Shortcuts are configurable in **Settings** or initially in `.env`. In Electron, Option on Mac is `Alt`.
-
-| Action                 | Default                   |
-| ---------------------- | ------------------------- |
-| Start / stop listening | `HOTKEY=Alt+Space`        |
-| Answer last question   | `CHECKPOINT_HOTKEY=Alt+1` |
-| Summary                | `SUMMARY_HOTKEY=Alt+2`    |
-| Summary + notes        | `BRIEFING_HOTKEY=Alt+3`   |
-| Toggle stealth / restore app | `STEALTH_HOTKEY=Alt+Shift+S` |
-| Show / hide overlay | `OVERLAY_TOGGLE_HOTKEY=Alt+Shift+B` |
-| Move overlay | `Alt+Shift+Left/Right/Up/Down` |
-| Scroll reply | `Alt+Control+Up/Down` |
-| Decrease / increase opacity | `Alt+Shift+-` / `Alt+Shift+=` |
-| Center panel / reset opacity | `OVERLAY_RESET_HOTKEY=Alt+Shift+0` |
+Change, clear, or reset shortcuts in **Settings**. The stealth restore shortcut requires a binding. The app updates settings that still use the previous defaults and preserves other custom bindings.
 
 Overlay movement uses 40-pixel steps and stays inside a display’s working area. Resizing for streamed replies preserves the panel’s position. Set **Settings → Overlay appearance → Default opacity (%)** to a whole percentage from 30 to 100 (default: 100). Saving applies it immediately and persists it for future launches; reset restores this saved default after temporary keyboard adjustments. You can also set `OVERLAY_OPACITY=100` in `.env` for the initial default. All overlay controls are configurable under **Settings → Overlay shortcuts** and work without focusing the panel.
 
-The opacity setting controls the background; text and header shortcut symbols use twice that opacity, capped at 100% (35% background → 70% text; 30% → 60%). The header displays Mac key symbols for recording, answers, summaries, notes, screenshots, show/hide, and—in stealth—restoring the app. Clicking the panel no longer dismisses it.
+The opacity setting controls the background; text and header shortcut symbols use twice that opacity, capped at 100% (35% background → 70% text; 30% → 60%). The header displays Mac key symbols for recording, Ask AI, screenshots, show/hide, and—in stealth—restoring the app. Clicking the panel no longer dismisses it.
 
 ## Screenshot questions
 

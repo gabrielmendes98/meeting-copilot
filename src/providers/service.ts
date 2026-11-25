@@ -31,7 +31,9 @@ export class AgentService {
   }
 
   async answer(request: AgentRequest, onText: OnText): Promise<string> {
+    request.signal?.throwIfAborted();
     const provider = await this.getProvider();
+    request.signal?.throwIfAborted();
     if (this.disposed) throw new Error("The agent service has been disposed.");
     return provider.answer(request, onText);
   }

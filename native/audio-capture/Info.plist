@@ -8,6 +8,8 @@
   <string>audio-capture</string>
   <key>CFBundleVersion</key>
   <string>0.1.0</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>Meeting Copilot transcribes your microphone when you select it as an audio source.</string>
   <key>NSScreenCaptureUsageDescription</key>
   <string>Meeting Copilot needs to capture system audio to transcribe meeting clips.</string>
 </dict>

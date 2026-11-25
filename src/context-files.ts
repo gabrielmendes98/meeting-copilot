@@ -62,12 +62,13 @@ export async function addContextFiles(window: BrowserWindow) {
 }
 
 /** Snapshot every source for this request, including legacy file references. */
-export async function getAgentContext(): Promise<string> {
+export async function getAgentContext(referenceIds?: readonly string[]): Promise<string> {
   const files = read();
+  const selected = referenceIds === undefined ? null : new Set(referenceIds);
   const text = getContextText().trim();
   const sources: Array<{ name: string; text: string }> = [];
   for (const file of files) {
-    if (file.error) continue; // Failed imports are explicitly marked as excluded in the UI.
+    if (file.error || (selected && !selected.has(file.id))) continue;
     try { sources.push({ name: file.name, text: file.text ?? await extractContextDocument(file.path) }); }
     catch { throw new Error(`Could not read context document "${file.name}". Remove it and import it again.`); }
   }

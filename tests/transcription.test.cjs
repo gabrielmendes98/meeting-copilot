@@ -42,7 +42,7 @@ test('explicit selection, aliases, and key validation share one configuration re
     assert.equal(config.provider, provider);
     assert.equal(config.apiKey, 'secret');
     assert.equal(config.model, model);
-    assert.equal(config.mode, 'clip');
+    assert.equal(config.mode, 'rotating');
     assert.deepEqual(missingTranscriptionKeys(env), []);
     assert.deepEqual(missingTranscriptionKeys({ STT_PROVIDER: provider }), [key]);
     assert.deepEqual(missingTranscriptionKeys({ STT_PROVIDER: provider, AGENT_API_KEY: 'agent-key' }), [key]);
@@ -57,7 +57,7 @@ test('factory creates the selected adapter and rejects missing cloud keys', asyn
     await assert.rejects(createTranscriptionProvider(readTranscriptionConfig({ STT_PROVIDER: provider })), /STT_PROVIDER_API_KEY is not set/);
     const adapter = await createTranscriptionProvider(readTranscriptionConfig({ STT_PROVIDER: provider, STT_PROVIDER_API_KEY: 'key' }));
     assert.ok(adapter instanceof CloudTranscriptionProvider);
-    assert.equal(adapter.createLiveSession, undefined);
+    assert.equal(typeof adapter.createLiveSession, "function");
     await adapter.dispose();
   }
   const adapter = await createTranscriptionProvider(readTranscriptionConfig({ STT_PROVIDER: 'macos' }));
@@ -108,14 +108,29 @@ test('cloud adapter rejects empty audio, malformed output, and HTTP failures', a
 test('cloud shutdown cancels an in-flight upload', async t => {
   const wav = wavFixture(t);
   let signal;
+  let started;
+  const requestStarted = new Promise(resolve => { started = resolve; });
   const provider = new CloudTranscriptionProvider(readTranscriptionConfig({ STT_PROVIDER_API_KEY: 'key' }), async (url, init) => {
     signal = init.signal;
+    started();
     return new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
   });
   const job = provider.transcribe(wav);
+  await requestStarted;
+  const cancellation = assert.rejects(job, /cancelled or timed out/);
   await provider.dispose();
-  await assert.rejects(job, /cancelled or timed out/);
+  await cancellation;
   assert.equal(signal.aborted, true);
+});
+
+test('disposing during file preparation prevents a later upload', async t => {
+  const wav = wavFixture(t);
+  const provider = new CloudTranscriptionProvider(readTranscriptionConfig({ STT_PROVIDER_API_KEY: 'key' }), async () => {
+    assert.fail('disposed adapter must not begin an upload');
+  });
+  const transcribing = assert.rejects(provider.transcribe(wav), /cancelled/);
+  await provider.dispose();
+  await transcribing;
 });
 
 function fakeProcess() {
@@ -227,7 +242,7 @@ test('resetTranscription keeps live callbacks on the replacement service', async
 
 test('service retries factory failures and rejects unavailable live capability', async () => {
   let attempts = 0;
-  const config = readTranscriptionConfig({ STT_PROVIDER_API_KEY: 'key' });
+  const config = { ...readTranscriptionConfig({ STT_PROVIDER_API_KEY: 'key' }), mode: 'clip' };
   const service = new TranscriptionService(async () => {
     if (++attempts === 1) throw new TranscribeError('unavailable');
     return { async transcribe() { return 'ok'; }, async dispose() {} };

@@ -46,6 +46,7 @@ test('full screenshot instructions answer the centered question and keep partial
   const sandbox = {
     exports: {},
     require(name) {
+      if (name === './settings-config') return require('../dist/settings-config');
       if (name === './context-files') return { getAgentContext: async () => context };
       if (name === './providers') return { createAgentProvider() {} };
       if (name === './providers/service') return { AgentService: class { async answer(request) { requests.push(request); return 'answer'; } } };

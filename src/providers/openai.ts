@@ -20,7 +20,10 @@ export class OpenAIProvider implements AgentProvider {
   }
 
   async answer(request: AgentRequest, onText: OnText): Promise<string> {
+    request.signal?.throwIfAborted();
     const controller = new AbortController();
+    const cancel = () => controller.abort();
+    request.signal?.addEventListener("abort", cancel, { once: true });
     this.active.add(controller);
     try {
       const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
@@ -54,6 +57,7 @@ export class OpenAIProvider implements AgentProvider {
       if (!full.trim()) throw new Error("The agent returned an empty response. Check that the model supports this request.");
       return full.trim();
     } finally {
+      request.signal?.removeEventListener("abort", cancel);
       controller.abort();
       this.active.delete(controller);
     }

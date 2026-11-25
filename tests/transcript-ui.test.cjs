@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const emptyCopy = 'Start listening from Meeting. Recognized speech will appear here and stay until the next meeting starts.';
-const unavailableCopy = 'Live transcription needs the macOS speech provider. Choose it in Settings.';
+const clipHint = 'Cloud transcripts appear when you pause or stop recording.';
 
 function loadApp() {
   const elements = new Map();
@@ -42,7 +42,7 @@ function loadApp() {
     navigator: { clipboard: { async writeText(value) { if (copyError) throw new Error('denied'); copied = value; } } },
     setTimeout() {}, clearTimeout() {},
   });
-  const shortcuts = { HOTKEY: 'Alt+Space', CHECKPOINT_HOTKEY: 'Alt+1', SUMMARY_HOTKEY: 'Alt+2', BRIEFING_HOTKEY: 'Alt+3', SCREENSHOT_HOTKEY: 'Alt+Shift+Space', FULL_SCREENSHOT_HOTKEY: 'Alt+Ctrl+Space', STEALTH_HOTKEY: 'Alt+Shift+S' };
+  const { settingDefaults: shortcuts } = require('../dist/settings-config');
   return {
     get, handler, notice: () => get('notice').textContent,
     copied: () => copied,
@@ -65,14 +65,17 @@ test('transcript page sits between Meeting and Context library', () => {
   assert.ok(meeting >= 0 && transcript > meeting && context > transcript);
   assert.match(html, /id="page-transcript"/);
   assert.match(html, /Copy transcript/);
-  assert.match(html, /What macOS has heard in this meeting\./);
+  assert.match(html, /What the copilot has heard in this meeting\./);
 });
 
-test('transcript screen shows macOS text, the empty hint, or the cloud message', async () => {
+test('transcript screen shows text from either capture mode and the appropriate empty hints', async () => {
   const ui = loadApp();
   await new Promise(resolve => setImmediate(resolve));
-  ui.show({ live: false, transcript: 'Hidden while cloud is selected' });
-  assert.equal(ui.get('transcript').textContent, unavailableCopy);
+  ui.show({ live: false, transcript: 'Cloud transcript' });
+  assert.equal(ui.get('transcript').textContent, 'Cloud transcript');
+  assert.equal(ui.get('copy-transcript').disabled, false);
+  ui.show({ live: false, transcript: '' });
+  assert.equal(ui.get('transcript').textContent, clipHint);
   assert.equal(ui.get('transcript').classes.empty, true);
   assert.equal(ui.get('copy-transcript').disabled, true);
 

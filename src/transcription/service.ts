@@ -17,7 +17,7 @@ export class TranscriptionService implements LiveTranscriptionSession {
   ) {}
 
   get supportsLive(): boolean {
-    return this.config().mode === "live";
+    return this.config().mode !== "clip";
   }
 
   get active(): boolean {

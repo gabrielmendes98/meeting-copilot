@@ -14,7 +14,7 @@ test('direct context UI loads notes, tracks unsaved edits, saves and clears text
     };
   }
   const get = id => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
-  get('settings-form').elements = { STT_PROVIDER: element(), AGENT_PROVIDER: element() };
+  get('settings-form').elements = { STT_PROVIDER: element(), AGENT_PROVIDER: element(), AGENT_MODEL: element() };
   let rejectSave = false;
   const api = {
     onState() {}, async getState() { throw new Error('context-only fixture'); },

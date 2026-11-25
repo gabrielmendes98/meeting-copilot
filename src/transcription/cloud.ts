@@ -1,3 +1,4 @@
+import { RotatingLiveSession } from "../live-session";
 import fs from "node:fs";
 import path from "node:path";
 import type { TranscriptionConfig } from "./config";
@@ -6,6 +7,8 @@ import type { TranscriptionProvider } from "./types";
 
 /** OpenAI and Groq share the same multipart transcription protocol. */
 export class CloudTranscriptionProvider implements TranscriptionProvider {
+  private disposed = false;
+  private live: RotatingLiveSession | null = null;
   private readonly active = new Set<AbortController>();
 
   constructor(
@@ -13,13 +16,19 @@ export class CloudTranscriptionProvider implements TranscriptionProvider {
     private readonly request: typeof fetch = fetch,
   ) {}
 
-  async transcribe(wavPath: string): Promise<string> {
-    const wav = fs.readFileSync(wavPath);
+  createLiveSession(): RotatingLiveSession {
+    return this.live ??= new RotatingLiveSession((file) => this.transcribe(file, true));
+  }
+
+  async transcribe(wavPath: string, allowEmpty = false): Promise<string> {
+    if (this.disposed) throw new TranscribeError("Transcription was cancelled.");
+    const wav = await fs.promises.readFile(wavPath);
+    if (this.disposed) throw new TranscribeError("Transcription was cancelled.");
     if (wav.length <= 44) throw new TranscribeError("Captured audio is empty.");
     const form = new FormData();
     form.append("file", new Blob([wav], { type: "audio/wav" }), path.basename(wavPath));
     form.append("model", this.config.model);
-    form.append("language", "en");
+    form.append("language", (process.env.MEETING_AUDIO_LANGUAGE || "en-US").split("-")[0]);
     form.append("response_format", "json");
 
     const controller = new AbortController();
@@ -39,7 +48,7 @@ export class CloudTranscriptionProvider implements TranscriptionProvider {
       const json: unknown = await response.json();
       const text = json && typeof json === "object" && "text" in json && typeof json.text === "string"
         ? json.text.trim() : "";
-      if (!text) throw new TranscribeError("Transcription came back empty.");
+      if (!text && !allowEmpty) throw new TranscribeError("Transcription came back empty.");
       return text;
     } catch (err) {
       if (err instanceof TranscribeError) throw err;
@@ -53,7 +62,10 @@ export class CloudTranscriptionProvider implements TranscriptionProvider {
   }
 
   async dispose(): Promise<void> {
+    this.disposed = true;
     for (const controller of this.active) controller.abort();
     this.active.clear();
+    await this.live?.stop();
+    this.live = null;
   }
 }

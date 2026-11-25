@@ -10,6 +10,8 @@ enum CaptureError: LocalizedError {
     case usage
     case noDisplay
     case noAudio
+    case microphoneUnavailable
+    case microphoneDenied
 
     var errorDescription: String? {
         switch self {
@@ -18,7 +20,12 @@ enum CaptureError: LocalizedError {
         case .noDisplay:
             return "No display found to capture audio from."
         case .noAudio:
-            return "No system audio reached the capture. Allow Screen Recording, keep the video/call playing, and use the main display."
+            return "No audio reached the capture. Check the selected source and its macOS permission."
+        case .microphoneUnavailable:
+            return "Microphone capture in Meeting Copilot requires macOS 15 or later."
+        case .microphoneDenied:
+            return "Microphone access is unavailable. Allow Meeting Copilot in Privacy & Security → Microphone."
+
         }
     }
 }
@@ -56,6 +63,14 @@ final class StopGate: @unchecked Sendable {
     }
 }
 
+enum AudioSource: String {
+    case system, microphone, both
+
+    static var configured: AudioSource {
+        AudioSource(rawValue: ProcessInfo.processInfo.environment["AUDIO_SOURCE"] ?? "") ?? .system
+    }
+}
+
 final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
     private var stream: SCStream?
     private var fileHandle: FileHandle?
@@ -64,8 +79,27 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
     private let lock = NSLock()
     private let sampleRate: Int = 48_000
     private let channels: Int = 2
+    private let source: AudioSource
+    private let onStreamError: () -> Void
+    private var mixStart: Double = 0
+    private var mixedSamples: [Int32] = []
+    private var rotating = false
+
+    init(source: AudioSource, onStreamError: @escaping () -> Void) {
+        self.source = source
+        self.onStreamError = onStreamError
+    }
 
     func startCapture() async throws {
+        if source != .system {
+            guard #available(macOS 15, *) else { throw CaptureError.microphoneUnavailable }
+            let status = AVCaptureDevice.authorizationStatus(for: .audio)
+            if status == .notDetermined {
+                guard await AVCaptureDevice.requestAccess(for: .audio) else { throw CaptureError.microphoneDenied }
+            } else if status != .authorized {
+                throw CaptureError.microphoneDenied
+            }
+        }
         if !CGPreflightScreenCaptureAccess() {
             _ = CGRequestScreenCaptureAccess()
         }
@@ -78,7 +112,8 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
 
         let filter = SCContentFilter(display: display, excludingApplications: [], exceptingWindows: [])
         let config = SCStreamConfiguration()
-        config.capturesAudio = true
+        config.capturesAudio = source != .microphone
+        if #available(macOS 15, *) { config.captureMicrophone = source != .system }
         config.excludesCurrentProcessAudio = true
         config.sampleRate = sampleRate
         config.channelCount = channels
@@ -93,19 +128,29 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
         let videoQueue = DispatchQueue(label: "meeting.copilot.video")
         let audioQueue = DispatchQueue(label: "meeting.copilot.audio")
         try stream.addStreamOutput(self, type: .screen, sampleHandlerQueue: videoQueue)
-        try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
+        if source != .microphone {
+            try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
+        }
+        if #available(macOS 15, *), source != .system {
+            try stream.addStreamOutput(self, type: .microphone, sampleHandlerQueue: audioQueue)
+        }
         try await stream.startCapture()
         self.stream = stream
     }
 
-    func beginFile(_ url: URL) throws {
+    func beginFile(_ url: URL, rotating: Bool = false) throws {
         lock.lock()
         defer { lock.unlock() }
-        FileManager.default.createFile(atPath: url.path, contents: nil)
+        _ = FileManager.default.createFile(
+            atPath: url.path, contents: nil, attributes: [.posixPermissions: 0o600]
+        )
         let handle = try FileHandle(forWritingTo: url)
         fileHandle = handle
         currentURL = url
         dataSize = 0
+        self.rotating = rotating
+        mixStart = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+        mixedSamples.removeAll(keepingCapacity: true)
         handle.write(Self.wavHeader(dataSize: 0, sampleRate: sampleRate, channels: channels))
     }
 
@@ -113,6 +158,12 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
         lock.lock()
         defer { lock.unlock() }
         guard let url = currentURL, let handle = fileHandle else { return nil }
+        if !mixedSamples.isEmpty {
+            let samples = mixedSamples.map { Int16(clamping: $0) }
+            let data = samples.withUnsafeBufferPointer { Data(buffer: $0) }
+            handle.write(data)
+            dataSize = UInt32(data.count)
+        }
         let bytes = dataSize
         do {
             try handle.seek(toOffset: 0)
@@ -134,17 +185,76 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        if type == .screen { return }
-        guard type == .audio, sampleBuffer.isValid else { return }
+        guard sampleBuffer.isValid else { return }
+        let microphone: Bool
+        if #available(macOS 15, *), type == .microphone {
+            microphone = true
+        } else if type == .audio {
+            microphone = false
+        } else {
+            return
+        }
         guard let pcm = Self.int16PCM(from: sampleBuffer), !pcm.isEmpty else { return }
+        let format = sampleBuffer.formatDescription?.audioStreamBasicDescription
+        let inputChannels = Int(format?.mChannelsPerFrame ?? UInt32(channels))
+        let inputRate = format?.mSampleRate ?? Double(sampleRate)
+
         lock.lock()
         defer { lock.unlock() }
-        fileHandle?.write(pcm)
-        dataSize &+= UInt32(pcm.count)
+        guard let fileHandle else { return }
+        if source == .both && rotating {
+            mix(pcm, sampleBuffer: sampleBuffer, inputChannels: inputChannels, inputRate: inputRate)
+        } else {
+            let output = microphone ? converted(pcm, inputChannels: inputChannels, inputRate: inputRate) : pcm
+            fileHandle.write(output)
+            dataSize &+= UInt32(output.count)
+        }
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         fputs("capture error: \(error.localizedDescription)\n", stderr)
+        onStreamError()
+    }
+
+    private func converted(_ pcm: Data, inputChannels: Int, inputRate: Double) -> Data {
+        guard inputChannels > 0, inputRate.isFinite, inputRate > 0 else { return Data() }
+        if inputChannels == channels && inputRate == Double(sampleRate) { return pcm }
+        return pcm.withUnsafeBytes { raw in
+            let samples = raw.bindMemory(to: Int16.self)
+            let inputFrames = samples.count / inputChannels
+            guard inputFrames > 0 else { return Data() }
+            let ratio = inputRate / Double(sampleRate)
+            let count = Int((Double(inputFrames) / ratio).rounded())
+            var stereo = [Int16]()
+            stereo.reserveCapacity(count * channels)
+            for frame in 0..<count {
+                let offset = min(inputFrames - 1, Int(Double(frame) * ratio)) * inputChannels
+                stereo.append(samples[offset])
+                stereo.append(samples[offset + min(1, inputChannels - 1)])
+            }
+            return stereo.withUnsafeBufferPointer { Data(buffer: $0) }
+        }
+    }
+
+    private func mix(_ pcm: Data, sampleBuffer: CMSampleBuffer, inputChannels: Int, inputRate: Double) {
+        let data = converted(pcm, inputChannels: inputChannels, inputRate: inputRate)
+        let now = CMClockGetTime(CMClockGetHostTimeClock()).seconds
+        let presentation = CMSampleBufferGetPresentationTimeStamp(sampleBuffer).seconds
+        let duration = Double(data.count / (channels * MemoryLayout<Int16>.size)) / Double(sampleRate)
+        let timestamp = presentation.isFinite && abs(presentation - now) < 2 ? presentation : now - duration
+        let firstSample = Int(((timestamp - mixStart) * Double(sampleRate)).rounded()) * channels
+        data.withUnsafeBytes { raw in
+            let samples = raw.bindMemory(to: Int16.self)
+            let end = min(sampleRate * channels * 32, firstSample + samples.count)
+            let start = max(0, firstSample)
+            guard start < end else { return }
+            if end > mixedSamples.count {
+                mixedSamples.append(contentsOf: repeatElement(0, count: end - mixedSamples.count))
+            }
+            for index in start..<end {
+                mixedSamples[index] += Int32(samples[index - firstSample]) / 2
+            }
+        }
     }
 
     private static func wavHeader(dataSize: UInt32, sampleRate: Int, channels: Int) -> Data {
@@ -260,11 +370,12 @@ final class RotateWriter: @unchecked Sendable {
     private var index = 0
     private var timer: DispatchSourceTimer?
     private var totalBytes: UInt32 = 0
-    private let interval: TimeInterval = 15
+    private let interval: TimeInterval
 
-    init(session: CaptureSession, dir: URL) {
+    init(session: CaptureSession, dir: URL, interval: TimeInterval) {
         self.session = session
         self.dir = dir
+        self.interval = interval
     }
 
     func openFirst() throws {
@@ -305,7 +416,7 @@ final class RotateWriter: @unchecked Sendable {
         index += 1
         let name = String(format: "%04d.wav", index)
         let url = dir.appendingPathComponent(name)
-        try session.beginFile(url)
+        try session.beginFile(url, rotating: true)
     }
 
     private func scheduleTimerLocked() {
@@ -355,8 +466,10 @@ func readStdin(flush: (() -> Void)?, stop: @escaping () -> Void) {
 struct AudioCaptureApp {
     static func main() async {
         let args = CommandLine.arguments
-        if args.count == 3, args[1] == "--rotate" {
-            await runRotate(dir: URL(fileURLWithPath: args[2]))
+        if (3...4).contains(args.count), args[1] == "--rotate" {
+            let requestedInterval = args.count == 4 ? Double(args[3]) ?? 15 : 15
+            let interval = requestedInterval.isFinite ? min(30, max(3, requestedInterval)) : 15
+            await runRotate(dir: URL(fileURLWithPath: args[2]), interval: interval)
             return
         }
         guard args.count == 2, args[1] != "--rotate" else {
@@ -367,8 +480,9 @@ struct AudioCaptureApp {
     }
 
     static func runSingle(url: URL) async {
-        let session = CaptureSession()
         let gate = StopGate()
+        let source = AudioSource.configured
+        let session = CaptureSession(source: source == .both ? .system : source, onStreamError: { gate.signal() })
         let signals = installStopSignals(gate)
         _ = signals
         readStdin(flush: nil, stop: { gate.signal() })
@@ -393,7 +507,7 @@ struct AudioCaptureApp {
         exit(0)
     }
 
-    static func runRotate(dir: URL) async {
+    static func runRotate(dir: URL, interval: TimeInterval) async {
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         } catch {
@@ -401,9 +515,9 @@ struct AudioCaptureApp {
             exit(2)
         }
 
-        let session = CaptureSession()
-        let rotator = RotateWriter(session: session, dir: dir)
         let gate = StopGate()
+        let session = CaptureSession(source: AudioSource.configured, onStreamError: { gate.signal() })
+        let rotator = RotateWriter(session: session, dir: dir, interval: interval)
         let signals = installStopSignals(gate)
         _ = signals
         readStdin(flush: { rotator.flush() }, stop: { gate.signal() })

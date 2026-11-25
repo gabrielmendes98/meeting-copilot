@@ -30,6 +30,7 @@ function prepareMacApp() {
       CFBundleIdentifier: 'dev.gabrielocc.meeting-copilot.dev',
       CFBundleIconFile: 'meeting-copilot.icns',
       LSApplicationCategoryType: 'public.app-category.productivity',
+      NSMicrophoneUsageDescription: "Meeting Copilot transcribes your microphone when you select it as an audio source.",
       NSScreenCaptureUsageDescription: 'Meeting Copilot captures system audio to transcribe meeting clips.',
       NSSpeechRecognitionUsageDescription: 'Meeting Copilot uses macOS speech recognition to transcribe English meeting audio.',
     };

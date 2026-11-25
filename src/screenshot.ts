@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
@@ -45,4 +46,10 @@ export async function capturePrimaryDisplay(): Promise<string> {
     throw new Error("Could not capture the primary display. Check Screen Recording permission.");
   }
   return pngPath;
+}
+
+export async function writeScreenshot(bytes: Buffer): Promise<string> {
+  const file = path.join(os.tmpdir(), `meeting-copilot-${randomUUID()}.png`);
+  await fs.promises.writeFile(file, bytes, { flag: "wx", mode: 0o600 });
+  return file;
 }

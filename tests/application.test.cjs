@@ -9,10 +9,14 @@ const { settingDefaults, validateSettings } = require('../dist/settings-config')
 test('settings reject unsupported providers and conflicting shortcut aliases', () => {
   assert.throws(() => validateSettings({ ...settingDefaults, AGENT_PROVIDER: 'unknown' }), /supported agent/);
   assert.throws(() => validateSettings({ ...settingDefaults, STT_PROVIDER: 'unknown' }), /supported transcription/);
-  assert.throws(() => validateSettings({ ...settingDefaults, CHECKPOINT_HOTKEY: 'Option+Space' }), /different shortcut/);
-  assert.throws(() => validateSettings({ ...settingDefaults, STEALTH_HOTKEY: 'Option+Space' }), /different shortcut/);
+  assert.throws(() => validateSettings({ ...settingDefaults, SCREEN_ASSIST_HOTKEY: 'Shift+Option+Space' }), /different shortcut/);
+  assert.throws(() => validateSettings({ ...settingDefaults, STEALTH_HOTKEY: 'Ctrl+Option+Space' }), /different shortcut/);
+  const optional = validateSettings({ ...settingDefaults, HOTKEY: '', OVERLAY_TOGGLE_HOTKEY: '' });
+  assert.equal(optional.HOTKEY, '');
+  assert.equal(optional.OVERLAY_TOGGLE_HOTKEY, '');
+  assert.throws(() => validateSettings({ ...settingDefaults, STEALTH_HOTKEY: '' }), /Enter a value/);
   assert.equal(settingDefaults.FULL_SCREENSHOT_HOTKEY, 'Alt+Ctrl+Space');
-  assert.throws(() => validateSettings({ ...settingDefaults, FULL_SCREENSHOT_HOTKEY: 'Alt+Space' }), /different shortcut/);
+  assert.throws(() => validateSettings({ ...settingDefaults, FULL_SCREENSHOT_HOTKEY: settingDefaults.HOTKEY }), /different shortcut/);
   assert.throws(() => validateSettings({ ...settingDefaults, AGENT_MODEL: ' ' }), /Enter a value/);
   for (const value of ['29', '101', '50.5', 'NaN', 'Infinity']) {
     assert.throws(() => validateSettings({ ...settingDefaults, OVERLAY_OPACITY: value }), /whole percentage/);
@@ -44,6 +48,15 @@ test('settings encrypt storage, preserve keys on blank input, and never expose c
     },
   }, () => require('../dist/settings'));
   try {
+    const file = path.join(directory, 'settings.json');
+    fs.writeFileSync(file, JSON.stringify({ HOTKEY: 'Alt+Space', OVERLAY_UP_HOTKEY: 'Ctrl+9', OVERLAY_DOWN_HOTKEY: '' }));
+    settings.loadSettings();
+    assert.equal(settings.publicSettings().values.HOTKEY, settingDefaults.HOTKEY);
+    assert.equal(settings.publicSettings().values.OVERLAY_UP_HOTKEY, 'Ctrl+9');
+    assert.equal(settings.publicSettings().values.OVERLAY_DOWN_HOTKEY, '');
+    fs.writeFileSync(file, JSON.stringify({ shortcutVersion: '2', HOTKEY: 'Alt+Space' }));
+    settings.loadSettings();
+    assert.equal(settings.publicSettings().values.HOTKEY, 'Alt+Space');
     process.env.AGENT_API_KEY = 'original-key';
     process.env.STT_PROVIDER_API_KEY = 'speech-key';
     settings.saveSettings(validateSettings({ ...settingDefaults, OVERLAY_OPACITY: '65', AGENT_API_KEY: '', STT_PROVIDER_API_KEY: '' }));

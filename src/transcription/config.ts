@@ -5,7 +5,7 @@ type Environment = Record<string, string | undefined>;
 
 export type TranscriptionConfig =
   | { provider: "macos"; mode: "live" }
-  | { provider: "openai" | "groq"; mode: "clip"; apiKey: string; model: string; url: string };
+  | { provider: "openai" | "groq"; mode: "clip" | "rotating"; apiKey: string; model: string; url: string };
 
 export function pickTranscriptionProvider(env: Environment = process.env): SttProvider {
   const explicit = env.STT_PROVIDER?.trim().toLowerCase() || "auto";
@@ -24,14 +24,14 @@ export function readTranscriptionConfig(env: Environment = process.env): Transcr
   if (provider === "macos") return { provider, mode: "live" };
   if (provider === "groq") {
     return {
-      provider, mode: "clip",
+      provider, mode: "rotating",
       apiKey,
       model: "whisper-large-v3-turbo",
       url: "https://api.groq.com/openai/v1/audio/transcriptions",
     };
   }
   return {
-    provider, mode: "clip",
+    provider, mode: "rotating",
     apiKey,
     model: "gpt-4o-mini-transcribe",
     url: "https://api.openai.com/v1/audio/transcriptions",
