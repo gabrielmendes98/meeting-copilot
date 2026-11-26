@@ -14,6 +14,7 @@ import {
   type MenuItemConstructorOptions,
   type NativeImage,
   screen,
+  shell,
   Tray,
 } from "electron";
 import { SystemAudioCapture } from "./capture";
@@ -41,7 +42,8 @@ import { addContextFiles, listContextFiles, removeContextFile, getContextText, s
 import { assertWavHasAudio } from "./wav";
 import { boundedText, MeetingHistory } from "./meeting-history";
 import { MeetingModes } from "./meeting-modes";
-import { missingTranscriptionKeys } from "./transcription/config";
+import { missingTranscriptionKeys, readTranscriptionConfig } from "./transcription/config";
+import { PermissionGate, speechPermission } from "./permissions";
 import type { OverlayState, OverlayStatus } from "./types";
 
 let overlay: BrowserWindow | null = null;
@@ -55,6 +57,7 @@ let startupError = "";
 let tray: Tray | null = null;
 let busy = false;
 let stealth = false;
+let screenShareProtection = false;
 let stealthTransition = false;
 let stealthShortcutRegistered = false;
 let overlaySuppressed = false;
@@ -62,13 +65,14 @@ let overlayOpacity = 1;
 const capture = new SystemAudioCapture();
 let history: MeetingHistory;
 let modes: MeetingModes;
+let permissions: PermissionGate;
 let sessionStartedAt: number | null = null;
 let pausedTranscript = "";
 let conversation: ChatTurn[] = [];
 let activeChat: AbortController | null = null;
 let contextStartsAt = 0;
 let useScreenContext = false;
-let pendingWorkspacePage: "settings" | "history" | null = null;
+let pendingWorkspacePage: "settings" | "history" | "modes" | null = null;
 
 function updateTranscript(segment: string): void {
   liveTranscript = [pausedTranscript, segment.trim()].filter(Boolean).join("\n\n");
@@ -126,8 +130,10 @@ function sendState(status: OverlayStatus, text = "", label?: string): void {
     setTrayRecording(listeningActive());
     return;
   }
+  if (permissions && !permissions.snapshot().ready) { overlay?.hide(); return; }
+  const wasVisible = overlay?.isVisible();
   if (!overlaySuppressed) overlay?.showInactive();
-  if (sessionStartedAt !== null) publishOverlaySession();
+  if (!wasVisible && overlay?.isVisible()) publishOverlaySession();
   setTrayRecording(listeningActive() || status === "recording");
 }
 
@@ -170,9 +176,9 @@ function appState() {
     const missing = missingKeys();
     if (missing.length) configurationError ||= "Add your API keys in Settings to get started.";
   } catch (err) { configurationError = err instanceof Error ? err.message : String(err); }
-  return { overlay: currentState, latestReply, transcript: liveTranscript, busy, listening: listeningActive(),
+  return { permissions: permissions?.snapshot(), overlay: currentState, latestReply, transcript: liveTranscript, busy, listening: listeningActive(),
     sessionStartedAt, conversation, useScreenContext, chatActive: activeChat !== null && !activeChat.signal.aborted, displays: availableDisplays(), languages: meetingLanguages,
-    live, settings: publicSettings(), configurationError, stealth, stealthAvailable: process.platform === "darwin" && stealthShortcutRegistered };
+    live, settings: publicSettings(), configurationError, screenShareProtection: stealth || screenShareProtection, stealth, stealthAvailable: process.platform === "darwin" && stealthShortcutRegistered };
 }
 
 function setBusy(value: boolean): void {
@@ -189,7 +195,8 @@ function publishOverlaySession(): void {
   overlay?.webContents.send("overlay-session", {
     startedAt: sessionStartedAt, listening: listeningActive(), busy,
     mode: modes?.active().id, modes: modes?.list().modes.map(({ id, title }) => ({ id, title })),
-    chatActive: activeChat !== null && !activeChat.signal.aborted, useScreenContext, transcript: liveTranscript,
+    chatActive: activeChat !== null && !activeChat.signal.aborted, useScreenContext,
+    screenShareProtection: stealth || screenShareProtection, transcript: liveTranscript,
   });
 }
 
@@ -198,15 +205,17 @@ function openApplication(): void {
   if (!mainWindow) {
     mainWindow = new BrowserWindow({
       width: 1120, height: 780, minWidth: 900, minHeight: 650,
-      title: "Meeting Copilot", titleBarStyle: "hiddenInset", backgroundColor: "#f7f8fc",
+      title: "Meeting Copilot", titleBarStyle: "hiddenInset", backgroundColor: "#262424",
       webPreferences: { preload: `${__dirname}/application-preload.js`, contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
+    mainWindow.setContentProtection(screenShareProtection);
     mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
     attachLocalShortcuts(mainWindow);
     mainWindow.webContents.on("did-finish-load", publishWorkspacePage);
     void mainWindow.loadFile(`${__dirname}/application/index.html`);
     mainWindow.on("closed", () => { mainWindow = null; });
+    mainWindow.on("focus", () => { void refreshPermissions(); });
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
@@ -219,7 +228,7 @@ function publishWorkspacePage(): void {
   pendingWorkspacePage = null;
 }
 
-function openWorkspacePage(page: "settings" | "history"): void {
+function openWorkspacePage(page: "settings" | "history" | "modes"): void {
   if (stealth || stealthTransition) return;
   const existing = mainWindow;
   pendingWorkspacePage = page;
@@ -228,6 +237,7 @@ function openWorkspacePage(page: "settings" | "history"): void {
 }
 
 function askShortcut(): void {
+  if (!allowAppUse()) return;
   if (busy) return;
   if (overlay?.isVisible() && overlay.isFocused() && !stealth) {
     overlay.webContents.send("overlay-ask-shortcut");
@@ -244,7 +254,16 @@ function askShortcut(): void {
   }
 }
 
+function toggleScreenShareProtection(): void {
+  if (!allowAppUse()) return;
+  screenShareProtection = !screenShareProtection;
+  mainWindow?.setContentProtection(stealth || screenShareProtection);
+  overlay?.setContentProtection(stealth || screenShareProtection);
+  publishAppState();
+}
+
 async function setStealthMode(enabled: boolean): Promise<void> {
+  if (enabled && !allowAppUse()) return;
   if (stealthTransition || enabled === stealth) return;
   if (process.platform !== "darwin") throw new Error("Stealth mode currently supports macOS only.");
   if (enabled && !stealthShortcutRegistered) throw new Error("Configure an available stealth shortcut in Settings before enabling stealth mode.");
@@ -260,7 +279,6 @@ async function setStealthMode(enabled: boolean): Promise<void> {
       mainWindow?.setHiddenInMissionControl(true);
       mainWindow?.setSkipTaskbar(true);
       stealth = true;
-      overlaySuppressed = false;
       mainWindow?.hide();
       tray?.destroy(); tray = null;
       app.setActivationPolicy("accessory");
@@ -278,8 +296,8 @@ async function setStealthMode(enabled: boolean): Promise<void> {
         app.dock?.hide();
         throw error;
       }
-      mainWindow?.setContentProtection(false);
-      overlay?.setContentProtection(false);
+      mainWindow?.setContentProtection(screenShareProtection);
+      overlay?.setContentProtection(screenShareProtection);
       overlay?.setFocusable(true);
       overlay?.setIgnoreMouseEvents(false);
       overlay?.setHiddenInMissionControl(false);
@@ -320,6 +338,13 @@ const hotkeyHandlers: Record<typeof shortcutKeys[number], () => void> = {
   SETTINGS_HOTKEY: () => openWorkspacePage("settings"),
 };
 
+for (const key of shortcutKeys) {
+  const handler = hotkeyHandlers[key];
+  hotkeyHandlers[key] = () => {
+    if ((key === "STEALTH_HOTKEY" && stealth) || allowAppUse()) handler();
+  };
+}
+
 function attachLocalShortcuts(window: BrowserWindow): void {
   window.webContents.on("before-input-event", (event, input) => {
     if (input.type !== "keyDown" || input.isAutoRepeat || !(input.meta || input.control || input.alt)) return;
@@ -347,6 +372,7 @@ function dismissOverlay(): void {
 }
 
 function toggleOverlayVisibility(): void {
+  if (!allowAppUse()) return;
   if (!overlay) overlay = createOverlay();
   if (overlay.isVisible()) { dismissOverlay(); return; }
   overlaySuppressed = false;
@@ -387,15 +413,33 @@ function resetOverlayLayout(): void {
   overlayOpacity = defaultOverlayOpacity(); publishOverlayAppearance();
 }
 
+async function refreshPermissions(): Promise<void> {
+  if (!permissions) return;
+  await permissions.refresh();
+  if (!permissions.snapshot().ready) overlay?.hide();
+  publishAppState();
+}
+
+function allowAppUse(): boolean {
+  if (permissions?.snapshot().ready) return true;
+  overlay?.hide();
+  openApplication();
+  publishAppState();
+  return false;
+}
+
 function registerApplicationIpc(): void {
-  function authorize(event: Electron.IpcMainInvokeEvent): void {
+  function authorize(event: Electron.IpcMainInvokeEvent, allowLocked = false): void {
     if (event.sender !== mainWindow?.webContents || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error("Unauthorized window.");
+    if (!allowLocked && !allowAppUse()) throw new Error("Complete macOS permission setup before using Meeting Copilot.");
   }
-  ipcMain.handle("app-state", (event) => { authorize(event); return appState(); });
+  ipcMain.handle("app-state", (event) => { authorize(event, true); return appState(); });
   ipcMain.handle("app-action", async (event, action: string) => {
     authorize(event);
     if (action === "stealth") { await setStealthMode(!stealth); return; }
+    if (action === "screen-share-protection") { toggleScreenShareProtection(); return; }
     if (busy) return;
+    if (action === "widget") { toggleOverlayVisibility(); return; }
     if (action === "capture") await toggleCapture();
     else if (action === "pause") await stopListening(true);
     else if (action === "end") { if (listeningActive()) await stopListening(); else await endPausedSession(); }
@@ -449,17 +493,28 @@ function registerApplicationIpc(): void {
     authorize(event);
     clearChatContext();
   });
-  ipcMain.handle("app-permissions", (event) => {
-    authorize(event);
-    return process.platform === "darwin" ? {
-      screen: systemPreferences.getMediaAccessStatus("screen"),
-      microphone: systemPreferences.getMediaAccessStatus("microphone"),
-    } : null;
+  ipcMain.handle("app-permissions", async (event) => {
+    authorize(event, true);
+    await refreshPermissions();
+    return permissions.snapshot();
+  });
+  ipcMain.handle("app-permission-request", async (event, kind: unknown) => {
+    authorize(event, true);
+    try { await permissions.request(kind); }
+    finally { publishAppState(); }
+    return permissions.snapshot();
+  });
+  ipcMain.handle("app-permission-complete", async (event) => {
+    authorize(event, true);
+    await permissions.complete();
+    publishAppState();
+    return permissions.snapshot();
   });
   ipcMain.handle("app-request-microphone", async (event) => {
-    authorize(event);
-    if (process.platform !== "darwin") return false;
-    return systemPreferences.askForMediaAccess("microphone");
+    authorize(event, true);
+    await permissions.request("microphone");
+    publishAppState();
+    return permissions.snapshot().microphone === "granted";
   });
   ipcMain.handle("app-mode-list", (event) => { authorize(event); return modes.list(); });
   ipcMain.handle("app-mode-update", (event, action: string, id: unknown, title: unknown, instructions: unknown, references: unknown) => {
@@ -610,7 +665,7 @@ function createOverlay(): BrowserWindow {
       sandbox: true,
     },
   });
-  win.setContentProtection(stealth);
+  win.setContentProtection(stealth || screenShareProtection);
   win.setFocusable(!stealth);
   win.setIgnoreMouseEvents(stealth);
   win.setHiddenInMissionControl(stealth);
@@ -747,6 +802,8 @@ async function endOrStartSession(): Promise<void> {
 }
 
 async function toggleCapture(): Promise<void> {
+  await refreshPermissions();
+  if (!allowAppUse()) return;
   if (busy) return;
   if (!listeningActive()) {
     try {
@@ -824,6 +881,8 @@ function cancelChat(): void {
 }
 
 async function runChat(question: string, useScreen: boolean, smart = false): Promise<boolean> {
+  await refreshPermissions();
+  if (!allowAppUse()) throw new Error("Complete macOS permission setup before asking AI.");
   assertAgentReady();
   let image: string | undefined;
   const controller = new AbortController();
@@ -862,8 +921,10 @@ async function runChat(question: string, useScreen: boolean, smart = false): Pro
 
 async function runScreenshot(
   capture: () => Promise<string | null>,
-  ask: (pngPath: string, onText: (fullText: string) => void, referenceIds?: string[]) => Promise<string>,
+  ask: (pngPath: string, onText: (fullText: string) => void, referenceIds?: string[], modeInstructions?: string) => Promise<string>,
 ): Promise<void> {
+  await refreshPermissions();
+  if (!allowAppUse()) return;
   if (busy) return;
   if (!checkConfiguration(true)) return;
 
@@ -882,7 +943,8 @@ async function runScreenshot(
       return;
     }
     sendState("thinking", "Reading the screenshot…");
-    const answer = await ask(pngPath, (full) => { sendState("answer", full); }, modes.active().referenceIds);
+    const activeMode = modes.active();
+    const answer = await ask(pngPath, (full) => { sendState("answer", full); }, activeMode.referenceIds, activeMode.instructions);
     const text = answer || "The request wasn't clear.";
     sendState("answer", text);
     clipboard.writeText(text);
@@ -950,6 +1012,26 @@ if (!gotLock) {
     modes = new MeetingModes(path.join(app.getPath("userData"), "meeting-modes.json"));
     try { modes.load(); } catch { startupError = "Saved meeting modes could not be loaded."; }
     try { loadSettings(); } catch { startupError = "Saved settings could not be loaded. Review and save your settings again."; }
+    permissions = new PermissionGate(path.join(app.getPath("userData"), "permission-setup.json"), {
+      supported: process.platform === "darwin",
+      readMedia: (kind) => process.platform === "darwin" ? systemPreferences.getMediaAccessStatus(kind) : "granted",
+      readSpeech: speechPermission,
+      needsSpeech: () => { try { return readTranscriptionConfig().provider === "macos"; } catch { return true; } },
+      requestMedia: async (kind) => {
+        if (kind === "microphone") { await systemPreferences.askForMediaAccess("microphone"); }
+        else {
+          try { await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } }); }
+          catch { /* macOS may deny enumeration until access is granted. */ }
+          if (systemPreferences.getMediaAccessStatus("screen") !== "granted") await shell.openExternal("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture");
+        }
+      },
+      openSettings: async (kind) => {
+        const pane = { screen: "ScreenCapture", microphone: "Microphone", speech: "SpeechRecognition" }[kind];
+        await shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?Privacy_${pane}`);
+      },
+    });
+    await permissions.load();
+    void refreshPermissions();
     overlayOpacity = defaultOverlayOpacity();
     currentState = { ...currentState, opacity: overlayOpacity, shortcuts: overlayShortcuts() };
     if (process.platform === "darwin") {
@@ -977,9 +1059,11 @@ if (!gotLock) {
     ipcMain.on("overlay-dismiss", (event) => { if (event.sender === overlay?.webContents) dismissOverlay(); });
     ipcMain.handle("overlay-action", async (event, action: unknown, question: unknown, useScreen: unknown) => {
       if (event.sender !== overlay?.webContents || event.senderFrame !== overlay.webContents.mainFrame) throw new Error("Unauthorized window.");
+      if (!allowAppUse()) throw new Error("Complete macOS permission setup before using the overlay.");
       if (stealth || stealthTransition) return;
       if (action === "dashboard") { openApplication(); return; }
-      if (action === "settings" || action === "history") { openWorkspacePage(action); return; }
+      if (action === "screen-share-protection") { toggleScreenShareProtection(); return; }
+      if (action === "settings" || action === "history" || action === "modes") { openWorkspacePage(action); return; }
       if (action === "mode") {
         modes.choose(question);
         mainWindow?.webContents.send("app-mode-changed", modes.list());
@@ -1000,7 +1084,7 @@ if (!gotLock) {
       }
     });
     registerHotkeys();
-    if (!appState().configurationError) {
+    if (permissions.snapshot().ready && !appState().configurationError) {
       try {
         await warmAgent();
       } catch (err) {

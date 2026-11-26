@@ -283,3 +283,53 @@ html, body {
 .overlay-toolbar label { display: flex; align-items: center; gap: 4px; }
 .transcript { flex: 0 1 auto; min-height: 32px; max-height: 160px; color: var(--ink); white-space: pre-wrap; }
 #overlay-clock { font-variant-numeric: tabular-nums; }
+
+/* Compact composer and charcoal controls follow the desktop reference. */
+:root { --ink:#f0eeec; --muted:#b4afab; --accent:#61b9ed; --line:rgba(255,255,255,.09); }
+.card { border-radius:18px; min-height:0; }
+.card::before { background:linear-gradient(135deg,#434141,#343333); border:1px solid #ffffff24; box-shadow:0 12px 30px #0005,inset 0 1px #ffffff0d; }
+.card::after { display:none; }
+.row { gap:7px; padding:7px 12px; border-bottom:1px solid #ffffff08; flex-wrap:nowrap; }
+.drag-handle { padding:0 4px; font-size:16px; }
+.pill { font-size:9px; letter-spacing:0; text-transform:none; padding:3px 6px; border:0; background:transparent; font-weight:500; }
+.pill::before { width:4px; height:4px; box-shadow:none; }
+.shortcuts { gap:4px; flex:1; }
+.shortcut-item { font-size:8px; border:0; padding:2px 4px; gap:3px; border-radius:4px; background:transparent; }
+.shortcut-item kbd { font-size:9px; font-weight:500; letter-spacing:0; background:#ffffff10; border:1px solid #ffffff08; padding:1px 3px; border-radius:4px; }
+.overlay-composer { display:flex; gap:10px; align-items:center; padding:14px 16px; background:#ffffff0c; opacity:var(--text-opacity,1); }
+.overlay-composer input { flex:1; min-width:0; background:transparent; border:0; outline:none; color:var(--ink); font:400 16px -apple-system,BlinkMacSystemFont,sans-serif; padding:5px 0; }
+.overlay-composer input::placeholder { color:#d2ceca80; }
+.overlay-composer button { border:0; border-radius:10px; background:#ffffff16; color:#eee; min-width:34px; height:34px; font-size:23px; cursor:pointer; }
+.overlay-composer button:disabled { opacity:.4; }
+#overlay-stop-chat { font-size:11px; padding:0 10px; }
+.overlay-toolbar { flex-wrap:nowrap; gap:10px; padding:10px 14px; font-size:11px; }
+.overlay-toolbar button,.overlay-toolbar select { border:0; background:transparent; border-radius:7px; padding:6px 7px; color:#dbd7d3; font:inherit; }
+.overlay-toolbar button:hover,.widget-more summary:hover { background:#ffffff10; }
+.overlay-toolbar button[aria-pressed="true"] { color:#a6d4f3; background:#67b6e818; }
+.overlay-toolbar .widget-brand { font-size:24px; padding:0; color:#ddd6d0; }
+.widget-controls { display:flex; gap:3px; align-items:center; margin-left:auto; }
+.screen-switch { cursor:pointer; position:relative; border-radius:7px; padding:6px; }
+.screen-switch input { width:12px; height:12px; accent-color:#79bbdf; }
+.overlay-toolbar .widget-mode select { width:120px; max-width:120px; background:#ffffff0a; font-size:11px; text-overflow:ellipsis; }
+.widget-more { position:relative; }
+.widget-more summary { list-style:none; cursor:pointer; color:#c6c1bd; padding:6px 8px; background:#ffffff09; border-radius:7px; }
+.widget-more summary::-webkit-details-marker { display:none; }
+.widget-more[open] { position:static; }
+.widget-more[open]>div { display:flex; flex-wrap:wrap; gap:4px; padding:8px 12px; border-top:1px solid #ffffff10; background:#262525; position:absolute; left:0; right:0; bottom:0; transform:translateY(100%); z-index:3; border-radius:0 0 12px 12px; }
+.card:has(.widget-more[open]) { margin-bottom:85px; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0; }
+.text:empty { display:none; }
+.markdown { font-size:14px; line-height:1.65; }
+.text { padding:15px 18px; }
+.markdown pre { border-radius:8px; }
+.markdown h1,.markdown h2,.markdown h3 { color:#fff; }
+.transcript { font-size:12px; border-top:1px solid var(--line); }
+
+.overlay-toolbar:has(.widget-more[open]) { flex-wrap:wrap; }
+.widget-more[open] { flex-basis:100%; }
+.widget-more[open]>div { position:static; transform:none; border-radius:8px; margin-top:6px; padding:7px; }
+.card:has(.widget-more[open]) { margin-bottom:10px; }
+
+.widget-more[open] summary{width:fit-content}
+
+.widget-brand img{display:block;object-fit:contain;opacity:var(--text-opacity,1)}

@@ -45,35 +45,68 @@ struct ScreenProtectionCheck {
 
     static func main() async {
         do {
-            guard CommandLine.arguments.count == 5 || CommandLine.arguments.count == 6,
-                  let x = Double(CommandLine.arguments[1]),
-                  let y = Double(CommandLine.arguments[2]),
-                  let width = Double(CommandLine.arguments[3]),
-                  let height = Double(CommandLine.arguments[4]), width > 0, height > 0 else {
-                throw NSError(domain: "CaptureCheck", code: 1, userInfo: [NSLocalizedDescriptionKey: "Usage: capture-check x y width height"])
+            let args = Array(CommandLine.arguments.dropFirst())
+            if args == ["--request-access"] {
+                guard CGPreflightScreenCaptureAccess() || CGRequestScreenCaptureAccess() else {
+                    throw NSError(domain: "CaptureCheck", code: 2, userInfo: [NSLocalizedDescriptionKey:
+                        "Allow screen recording for the app named by macOS in System Settings → Privacy & Security → Screen & System Audio Recording, then rerun the diagnostic."])
+                }
+                return
+            }
+            let windowMode = args.first == "--window"
+            let rect: CGRect?
+            if windowMode, args.count == 3, Int32(args[1]) != nil {
+                rect = nil
+            } else if (args.count == 4 || args.count == 5),
+                      let x = Double(args[0]), let y = Double(args[1]),
+                      let width = Double(args[2]), let height = Double(args[3]),
+                      [x, y, width, height].allSatisfy({ $0.isFinite }), width > 0, height > 0,
+                      args.count == 4 || ["--stream", "--watch"].contains(args[4]) {
+                rect = CGRect(x: x, y: y, width: width, height: height)
+            } else {
+                throw NSError(domain: "CaptureCheck", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                    "Usage: capture-check x y width height [--stream|--watch] or capture-check --window owner-pid title"])
             }
             guard CGPreflightScreenCaptureAccess() else {
                 throw NSError(domain: "CaptureCheck", code: 2, userInfo: [NSLocalizedDescriptionKey: "Screen recording access is not available for this diagnostic process. No capture was made."])
             }
-            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            guard let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() }) else {
-                throw NSError(domain: "CaptureCheck", code: 3, userInfo: [NSLocalizedDescriptionKey: "Main display not found."])
+            // Initialize the display connection before creating either filter. The
+            // single-window filter also queries displays behind the scenes.
+            var mainDisplay: CGDirectDisplayID = 0
+            var displayCount: UInt32 = 0
+            guard CGGetActiveDisplayList(1, &mainDisplay, &displayCount) == .success, displayCount > 0 else {
+                throw NSError(domain: "CaptureCheck", code: 3, userInfo: [NSLocalizedDescriptionKey: "No active display found."])
             }
-            // No excluded windows or applications: model a full-display share.
-            let filter = SCContentFilter(display: display, excludingWindows: [])
+            let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             let config = SCStreamConfiguration()
-            config.width = 100
-            config.height = 80
-            config.sourceRect = CGRect(x: x, y: y, width: width, height: height)
             config.showsCursor = false
+            let filter: SCContentFilter
+            if let rect {
+                guard let display = content.displays.first(where: { $0.displayID == mainDisplay }) else {
+                    throw NSError(domain: "CaptureCheck", code: 3, userInfo: [NSLocalizedDescriptionKey: "Main display not found."])
+                }
+                filter = SCContentFilter(display: display, excludingWindows: [])
+                config.width = 100
+                config.height = 80
+                config.sourceRect = rect
+            } else {
+                guard let target = content.windows.first(where: {
+                    $0.owningApplication?.processID == Int32(args[1]) && $0.title == args[2]
+                }) else {
+                    throw NSError(domain: "CaptureCheck", code: 6, userInfo: [NSLocalizedDescriptionKey: "Synthetic share window could not be located."])
+                }
+                filter = SCContentFilter(desktopIndependentWindow: target)
+                config.width = 320
+                config.height = 180
+            }
             let image: CGImage
-            if CommandLine.arguments.last == "--stream" || CommandLine.arguments.last == "--watch" {
+            if !windowMode && (args.last == "--stream" || args.last == "--watch") {
                 let frames = AsyncStream<CGImage>.makeStream(bufferingPolicy: .bufferingNewest(1))
                 let output = FrameOutput(frames.continuation)
                 let stream = SCStream(filter: filter, configuration: config, delegate: nil)
                 try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue(label: "capture-check.frames"))
                 try await stream.startCapture()
-                if CommandLine.arguments.last == "--watch" {
+                if args.last == "--watch" {
                     for await frame in frames.stream { try emit(frame) }
                     try await stream.stopCapture()
                     return

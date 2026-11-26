@@ -130,3 +130,66 @@ test('contextual chat and screenshots send the current reference library', async
   await sandbox.exports.askWithContext({ question: 'Next meeting' }, () => {});
   assert.equal(requests.at(-1).text.includes('Project deadline'), false);
 });
+
+
+test('PowerPoint references follow presentation order and preserve readable text without notes or hidden ZIP parts', async t => {
+  const JSZip = require('jszip');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-pptx-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const zip = new JSZip();
+  const office = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const drawing = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+  zip.file('ppt/presentation.xml', `<p:presentation xmlns:p="urn:presentation" xmlns:r="${office}"><p:sldIdLst><p:sldId id="1" r:id="second"/><p:sldId id="2" r:id="first"/></p:sldIdLst></p:presentation>`);
+  zip.file('ppt/_rels/presentation.xml.rels', `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="first" Type="${office}/slide" Target="slides/slide1.xml"/><Relationship Id="second" Type="${office}/slide" Target="/ppt/slides/slide10.xml"/></Relationships>`);
+  zip.file('ppt/slides/slide1.xml', `<a:p xmlns:a="${drawing}"><a:r><a:t>Budget is $500</a:t></a:r><a:br/><a:r><a:t>Approved</a:t></a:r></a:p>`);
+  zip.file('ppt/slides/slide10.xml', `<a:p xmlns:a="${drawing}"><a:r><a:t>Launch </a:t></a:r><a:r><a:t>Friday &amp; Monday</a:t></a:r></a:p>`);
+  zip.file('ppt/notesSlides/notesSlide1.xml', '<secret>Do not include notes</secret>');
+  zip.file('ppt/slides/slide99.xml', '<secret>Unlisted slide</secret>');
+  const file = path.join(directory, 'brief.PPTX');
+  const write = async () => fs.writeFileSync(file, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
+  await write();
+  assert.equal(await extractContextDocument(file), 'Slide 1\nLaunch Friday & Monday\n\nSlide 2\nBudget is $500\nApproved');
+  zip.file('ppt/slides/slide10.xml', '<!DOCTYPE slide [<!ENTITY x "bad">]><slide/>');
+  await write();
+  await assert.rejects(extractContextDocument(file), /document type/);
+  zip.file('ppt/slides/slide10.xml', `<a:p xmlns:a="${drawing}"><a:t>${'x'.repeat(MAX_CONTEXT_CHARACTERS + 1)}</a:t></a:p>`);
+  await write();
+  await assert.rejects(extractContextDocument(file), /context limit/);
+  zip.file('ppt/slides/slide10.xml', ' '.repeat(MAX_DOCUMENT_BYTES + 1));
+  await write();
+  await assert.rejects(extractContextDocument(file), /Expanded PPTX/);
+});
+
+test('PowerPoint rejects unresolved, external, invalid and textless slides', async t => {
+  const JSZip = require('jszip');
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-pptx-invalid-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const zip = new JSZip();
+  const file = path.join(directory, 'brief.pptx');
+  const office = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+  const write = async () => fs.writeFileSync(file, await zip.generateAsync({ type: 'nodebuffer' }));
+  zip.file('ppt/presentation.xml', `<p:presentation xmlns:p="urn:presentation" xmlns:r="${office}"><p:sldId r:id="s1"/></p:presentation>`);
+  for (const target of ['Target="../../secrets.xml"', 'Target="https://example.com/slide.xml" TargetMode="External"', 'Target="slides/missing.xml"']) {
+    zip.file('ppt/_rels/presentation.xml.rels', `<Relationships><Relationship Id="s1" Type="${office}/slide" ${target}/></Relationships>`);
+    await write();
+    await assert.rejects(extractContextDocument(file), /Invalid PPTX/);
+  }
+  zip.file('ppt/slides/missing.xml', '<slide/>');
+  await write();
+  await assert.rejects(extractContextDocument(file), /No readable text/);
+  zip.file('ppt/slides/missing.xml', '<slide><broken></slide>');
+  await write();
+  await assert.rejects(extractContextDocument(file));
+});
+
+test('source code references retain UTF-8 contents and reject binary content', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-code-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  for (const extension of ['ts', 'tsx', 'py', 'swift', 'sql', 'yaml']) {
+    const file = path.join(directory, 'reference.' + extension);
+    fs.writeFileSync(file, 'const project = "São Paulo";\n  // preserve indentation');
+    assert.equal(await extractContextDocument(file), 'const project = "São Paulo";\n  // preserve indentation');
+    fs.writeFileSync(file, Buffer.from([0, 1, 2]));
+    await assert.rejects(extractContextDocument(file), /UTF-8/);
+  }
+});

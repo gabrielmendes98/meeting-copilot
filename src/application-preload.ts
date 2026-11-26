@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld("meetingCopilot", {
   cancelChat: () => ipcRenderer.invoke("app-chat-cancel"),
   clearChat: () => ipcRenderer.invoke("app-chat-clear"),
   permissions: () => ipcRenderer.invoke("app-permissions"),
+  requestPermission: (kind: string) => ipcRenderer.invoke("app-permission-request", kind),
+  completePermissions: () => ipcRenderer.invoke("app-permission-complete"),
   requestMicrophone: () => ipcRenderer.invoke("app-request-microphone"),
   onModeChanged: (callback: (modes: unknown) => void) => { ipcRenderer.on("app-mode-changed", (_event, modes: unknown) => callback(modes)); },
   listModes: () => ipcRenderer.invoke("app-mode-list"),

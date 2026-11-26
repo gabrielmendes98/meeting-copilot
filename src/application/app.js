@@ -4,14 +4,19 @@ const form = $("settings-form");
 // Curated choices supported by the adapters; IDs stay in option values.
 const agentModels = {
   openai: [
+    { id: "gpt-6.2-sol", name: "GPT-6.2 Sol · Recommended", hint: "A strong starting point for meeting help, follow-ups, and technical questions. Uses low reasoning effort for live assistance." },
+    { id: "gpt-6.1-terra", name: "GPT-6.1 Terra · Screenshots & visual reasoning", hint: "Designed for understanding screenshots, diagrams, and visual context. Uses low reasoning effort for live assistance." },
+    { id: "gpt-6-luna", name: "GPT-6 Luna · Lower cost", hint: "Efficient for focused questions, short summaries, and routine meeting help. Uses low reasoning effort." },
+    { id: "gpt-6.2-astra", name: "GPT-6.2 Astra · Complex questions", hint: "The most capable option for demanding reasoning and system design. Uses medium reasoning effort; expect higher cost and potentially longer waits." },
+    { id: "gpt-5.4-mini", name: "GPT-5.4 mini · Efficient coding & vision", hint: "An efficient option for code and screenshot questions, with reasoning disabled for quick responses." },
     { id: "gpt-4.1-mini", name: "GPT-4.1 mini (Default)" },
     { id: "gpt-4.1", name: "GPT-4.1" },
     { id: "gpt-4o-mini", name: "GPT-4o mini" },
     { id: "gpt-4o", name: "GPT-4o" },
   ],
   cursor: [
-    { id: "composer-2.5", name: "Composer 2.5 (Default)" },
-    { id: "auto", name: "Automatic" },
+    { id: "composer-2.5", name: "Composer 2.5 (Default)", hint: "Uses Composer through your Cursor API account." },
+    { id: "auto", name: "Automatic", hint: "Lets Cursor choose an available model for the request." },
   ],
 };
 const modelSelections = {};
@@ -39,6 +44,8 @@ function updateCustomModelField() {
   const custom = form.elements.AGENT_MODEL.value === "__custom__";
   $("custom-model-field").hidden = !custom;
   $("custom-model").required = custom;
+  const choice = (agentModels[form.elements.AGENT_PROVIDER.value] || agentModels.openai).find(model => model.id === form.elements.AGENT_MODEL.value);
+  $("model-hint").textContent = (choice?.hint || (custom ? "Enter a model ID supported by your provider." : "An existing model option; newer recommended choices are also available.")) + " Availability depends on your API account. Your current selection is preserved until you save.";
 }
 
 let state;
@@ -56,6 +63,7 @@ function notify(message, error = false) {
   noticeTimer = setTimeout(() => { $("notice").hidden = true; }, error ? 9000 : 4000);
 }
 function showPage(page) {
+  $("workspace-title").textContent = ({ meeting: "Meeting", transcript: "Transcript", history: "History", context: "Context library", modes: "Modes", settings: "Settings" })[page] || "Meeting Copilot";
   document.querySelectorAll(".page").forEach((element) => { element.hidden = element.id !== `page-${page}`; });
   document.querySelectorAll(".nav-button").forEach((button) => {
     const active = button.dataset.page === page;
@@ -133,8 +141,10 @@ function render(next) {
     label.hidden = !label.textContent;
   }
   document.querySelectorAll("[data-action]").forEach((button) => {
-    button.disabled = button.dataset.action === "stealth" ? !next.stealthAvailable : busy;
+    button.disabled = button.dataset.action === "stealth" ? !next.stealthAvailable
+      : button.dataset.action === "screen-share-protection" ? next.stealth : busy;
   });
+  $("screen-share-protection").setAttribute("aria-pressed", String(Boolean(next.screenShareProtection)));
   $("stealth-hint").textContent = next.stealthAvailable ? `Press ${shortcut(settings.values.STEALTH_HOTKEY)} to restore the app, even while it is working. Restarting restores normal mode.` : "Stealth mode requires macOS and an available restore shortcut. Check Settings for shortcut conflicts.";
   $("configuration-banner").hidden = !next.configurationError;
   $("configuration-message").textContent = next.configurationError;
@@ -208,15 +218,28 @@ form.addEventListener("submit", async (event) => {
   catch (error) { notify(error.message, true); }
   finally { saving = false; if (state) render(state); }
 });
-api.onState(render);
-async function initialize() {
-  try { const initial = await api.getState(); render(initial); populateSettings(initial.settings); }
-  catch (error) { notify(error.message, true); }
-  try { renderFiles(await api.listContext()); } catch (error) { notify(error.message, true); }
+let workspaceDataLoaded = false;
+let workspaceDataLoading = false;
+async function loadWorkspaceData() {
+  if (workspaceDataLoaded || workspaceDataLoading) return;
+  workspaceDataLoading = true;
   try {
-    savedContextText = await api.getContextText();
-    $("context-text").value = savedContextText; contextTextLoaded = true; $("context-text").disabled = false;
-    updateContextTextStatus();
-  } catch (error) { $("context-text-hint").textContent = "Could not load saved text. Reopen the window to retry."; notify(error.message, true); }
+    try { renderFiles(await api.listContext()); } catch (error) { notify(error.message, true); }
+    try {
+      savedContextText = await api.getContextText();
+      $("context-text").value = savedContextText; contextTextLoaded = true; $("context-text").disabled = false;
+      updateContextTextStatus();
+    } catch (error) { $("context-text-hint").textContent = "Could not load saved text. Reopen the window to retry."; notify(error.message, true); }
+    workspaceDataLoaded = true;
+  } finally { workspaceDataLoading = false; }
+}
+api.onState(next => {
+  render(next);
+  if (next.permissions?.ready) void loadWorkspaceData();
+});
+async function initialize() {
+  try { const initial = await api.getState(); render(initial); populateSettings(initial.settings); if (initial.permissions && !initial.permissions.ready) return; }
+  catch (error) { notify(error.message, true); }
+  await loadWorkspaceData();
 }
 initialize();

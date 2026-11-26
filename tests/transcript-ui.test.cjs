@@ -6,7 +6,8 @@ const vm = require('node:vm');
 const emptyCopy = 'Start listening from Meeting. Recognized speech will appear here and stay until the next meeting starts.';
 const clipHint = 'Cloud transcripts appear when you pause or stop recording.';
 
-function loadApp() {
+function loadApp(initialState) {
+  let contextReads = 0;
   const elements = new Map();
   let copied = '';
   let copyError = false;
@@ -29,8 +30,8 @@ function loadApp() {
   };
   const api = {
     onState(fn) { handler = fn; },
-    async getState() { throw new Error('transcript-only fixture'); },
-    async listContext() { return []; },
+    async getState() { if (initialState) return initialState; throw new Error('transcript-only fixture'); },
+    async listContext() { contextReads++; return []; },
     async getContextText() { return ''; },
   };
   vm.runInNewContext(fs.readFileSync('src/application/app.js', 'utf8'), {
@@ -46,6 +47,7 @@ function loadApp() {
   return {
     get, handler, notice: () => get('notice').textContent,
     copied: () => copied,
+    contextReads: () => contextReads,
     failCopy() { copyError = true; },
     show(overrides = {}) {
       handler({
@@ -116,4 +118,19 @@ test('transcript copy failure uses the error notice', async () => {
   await ui.get('copy-transcript').listeners.click();
   assert.equal(ui.notice(), 'Could not copy the transcript.');
   assert.equal(ui.get('notice').classes.error, true);
+});
+
+
+test('the context library initializes once when permission checks finish after the first state', async () => {
+  const { settingDefaults } = require('../dist/settings-config');
+  const ui = loadApp({ permissions: { ready: false }, listening:false,busy:false,live:true,
+    latestReply:'',transcript:'',overlay:{status:'idle',text:''},settings:{values:settingDefaults} });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.contextReads(), 0);
+  ui.show({ permissions: { ready: true } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.contextReads(), 1);
+  ui.show({ permissions: { ready: true } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ui.contextReads(), 1);
 });

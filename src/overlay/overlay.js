@@ -104,6 +104,7 @@ window.copilot.onSession((next) => {
     select.replaceChildren(...(next.modes || []).map(mode => new Option(mode.title, mode.id)));
   }
   if (next.mode) select.value = next.mode;
+  element("overlay-screen-share-protection").setAttribute("aria-pressed", String(Boolean(next.screenShareProtection)));
   element("overlay-include-screen").checked = Boolean(next.useScreenContext);
   updateOverlayClock();
   element("overlay-audio").textContent = next.listening ? "Pause audio" : next.startedAt ? "Resume audio" : "Listen";
@@ -123,7 +124,7 @@ async function overlayAction(action, question, screen) {
   catch (error) { showReply(error.message); fitWindow(); return false; }
 }
 
-for (const action of ["dashboard", "audio", "end", "settings", "history", "new-chat"]) {
+for (const action of ["dashboard", "audio", "end", "settings", "modes", "history", "new-chat", "screen-share-protection"]) {
   element(`overlay-${action}`).addEventListener("click", () => void overlayAction(action));
 }
 element("overlay-stop-chat").addEventListener("click", () => void overlayAction("stop-chat"));
@@ -154,3 +155,5 @@ element("overlay-mode").addEventListener("change", async (event) => {
   const select = event.currentTarget;
   if (!(await overlayAction("mode", select.value))) select.value = session.mode;
 });
+
+element("overlay-more").addEventListener("toggle", fitWindow);

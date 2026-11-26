@@ -8,23 +8,41 @@
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
+  <section id="permission-onboarding" class="permission-onboarding" aria-labelledby="onboarding-title">
+    <img class="onboarding-mark" src="../assets/app.png" alt="Meeting Copilot" width="52" height="52" />
+    <div class="onboarding-step">WELCOME TO MEETING COPILOT <span>01 / 01</span></div>
+    <h1 id="onboarding-title">A little setup.<br>A lot more context.</h1>
+    <p class="onboarding-description">Give Meeting Copilot access to your screen and audio so it can help in the moment. Approve each permission to get started.</p>
+    <div class="permission-list">
+      <article class="permission-row"><span class="permission-icon" aria-hidden="true">▣</span><div><h2>Screen &amp; system audio</h2><p>Understand your screen and hear the conversation.</p><small id="permission-screen-status">Checking access…</small></div><button id="permission-screen" data-permission="screen" class="secondary">Allow access</button></article>
+      <article class="permission-row"><span class="permission-icon" aria-hidden="true">♩</span><div><h2>Microphone</h2><p>Include your voice when you choose microphone audio.</p><small id="permission-microphone-status">Checking access…</small></div><button id="permission-microphone" data-permission="microphone" class="secondary">Allow access</button></article>
+      <article id="permission-speech-row" class="permission-row"><span class="permission-icon" aria-hidden="true">≋</span><div><h2>Speech Recognition</h2><p>Transcribe on-device with Meeting Copilot Speech.</p><small id="permission-speech-status">Checking access…</small></div><button id="permission-speech" data-permission="speech" class="secondary">Allow access</button></article>
+    </div>
+    <p id="onboarding-message" class="onboarding-message" role="status">Checking macOS permissions…</p>
+    <div class="onboarding-footer"><button id="permission-refresh" class="text-button">Check again</button><button id="permission-continue" class="primary" disabled>Continue →</button></div>
+    <p class="onboarding-footnote">Nothing is recorded during setup. If macOS asks you to quit and reopen, restart the app, then check again.</p>
+  </section>
+  <div id="workspace-shell" class="workspace-shell" hidden inert>
   <aside class="sidebar">
-    <div class="brand"><img class="brand-icon" src="../assets/app.png" alt="" width="34" height="34" /><div>Meeting Copilot<small>Your meeting companion</small></div></div>
+    <div class="brand"><img class="brand-icon" src="../assets/app.png" alt="" width="34" height="34" /><div>Meeting Copilot<small>Your personal copilot</small></div></div>
     <nav aria-label="Main navigation">
       <button class="nav-button active" data-page="meeting" aria-current="page"><span aria-hidden="true">◉</span> Meeting</button>
       <button class="nav-button" data-page="transcript"><span aria-hidden="true">✎</span> Transcript</button>
       <button class="nav-button" data-page="history"><span aria-hidden="true">◷</span> History</button>
       <button class="nav-button" data-page="context"><span aria-hidden="true">▤</span> Context library <span class="count" id="context-count">0</span></button>
+      <div class="nav-label">PERSONALIZE</div>
+      <button class="nav-button" data-page="modes"><span aria-hidden="true">▦</span> Modes</button>
       <button class="nav-button" data-page="settings"><span aria-hidden="true">⚙</span> Settings</button>
     </nav>
     <div class="sidebar-footer"><span class="status-dot" id="sidebar-dot"></span><span id="sidebar-status">Ready when you are</span><small>Available from your menu bar, too.</small></div>
   </aside>
   <main>
-    <header class="titlebar"><span>YOUR WORKSPACE</span><span class="privacy-label">Audio settings</span></header>
+    <header class="titlebar"><span id="workspace-title">Meeting</span><span class="privacy-label"><img src="../assets/app.png" alt="" width="18" height="18" /> Meeting Copilot</span></header>
     <div id="notice" role="status" hidden></div>
     <section id="page-meeting" class="page">
       <div id="configuration-banner" class="banner" hidden><span id="configuration-message"></span><button data-open-settings>Open settings →</button></div>
-      <article class="settings-card stealth-card"><div class="settings-heading"><h2>Stealth mode</h2><p>Hide the app from the Dock, Cmd+Tab, menu bar, and Mission Control. The floating overlay lets clicks pass through to your meeting, without taking focus. Use keyboard shortcuts to show, hide, move, scroll, and adjust it.</p></div><p class="stealth-warning">Screen-share protection is best effort. On macOS, full-screen sharing in Meet, Slack, or Teams may still show the overlay. Share a specific app window and verify the viewer’s screen before relying on it.</p><div class="context-text-footer"><small id="stealth-hint">Press Option+Shift+S to restore the app. Restarting also restores normal mode.</small><button id="enter-stealth" class="secondary" data-action="stealth">Enter stealth mode <kbd id="stealth-shortcut">⌥ ⇧ S</kbd></button></div></article>
+
+      <div class="page-heading meeting-heading"><div><span class="eyebrow">YOUR COPILOT, IN THE MOMENT</span><h1>What’s on your mind?</h1><p class="subtitle">Ask anything. Your screen and conversation add the context.</p></div><button id="open-widget" class="secondary" data-action="widget">Open floating widget <kbd>⌘ \</kbd></button></div>
       <div class="session-card">
         <div class="session-intro"><div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><h2 id="session-title">Ready for your next meeting</h2><p id="session-description">Capture the conversation from your meeting app.</p></div></div>
         <div class="session-controls"><output id="session-clock" hidden></output><button id="pause-session" class="secondary" data-action="pause" hidden>Pause audio</button>
@@ -33,18 +51,9 @@
       <article class="settings-card">
         <div class="card-heading"><h2>Ask AI</h2><button id="clear-chat" class="text-button" type="button">New chat <kbd id="new-chat-shortcut"></kbd></button></div>
         <div class="chat-mode"><label>Mode <select id="meeting-mode"></select></label><button id="new-mode" class="text-button" type="button">New mode</button><button id="edit-mode" class="text-button" type="button" hidden>Edit mode</button></div>
-        <form id="mode-editor" class="mode-editor" hidden>
-          <label>Mode name<input id="mode-name" maxlength="60" required /></label>
-          <label>Instructions<textarea id="mode-instructions" maxlength="8000" rows="4" required></textarea></label>
-          <fieldset id="mode-references"><legend>Reference documents</legend>
-            <label class="inline-check"><input id="mode-all-references" type="checkbox" checked /> Use all documents in the context library</label>
-            <div id="mode-reference-options" hidden></div>
-          </fieldset>
-          <div class="workflow-actions"><button class="secondary" type="submit">Save mode</button><button id="cancel-mode" class="text-button" type="button">Cancel</button><button id="delete-mode" class="text-button" type="button" hidden>Delete mode</button></div>
-        </form>
         <ol id="conversation" class="conversation" aria-label="Conversation" hidden></ol>
         <form id="ask-ai">
-          <label for="chat-question">Your question</label><textarea id="chat-question" rows="2" maxlength="4000" placeholder="Ask about this conversation or what’s on screen"></textarea>
+          <label for="chat-question">Your question</label><textarea id="chat-question" rows="2" maxlength="4000" placeholder="Ask anything about your screen or conversation…"></textarea>
           <div class="workflow-actions">
             <label class="inline-check"><input id="chat-screen" type="checkbox" /> Use screen context</label>
             <button id="stop-chat" class="secondary" type="button" hidden>Stop response</button>
@@ -60,14 +69,26 @@
       <article class="reply-card"><div class="card-heading"><h2>Live transcript</h2><button id="copy-transcript" class="text-button" disabled>Copy transcript</button></div><div id="transcript" class="reply transcript-body empty">Start listening from Meeting. Recognized speech will appear here and stay until the next meeting starts.</div></article>
     </section>
     <section id="page-history" class="page" hidden>
-      <div class="page-heading"><div><h1>Meeting history</h1><p class="subtitle">Search transcripts and notes saved on this Mac.</p></div></div>
-      <label for="meeting-search">Search meetings</label><input id="meeting-search" type="search" maxlength="300" placeholder="Title, notes, or words spoken" />
-      <ul id="meeting-list" class="file-list" aria-label="Saved meetings"></ul>
-      <form id="ask-history" class="settings-card">
-        <label for="history-question">Ask about saved meetings</label>
-        <div class="workflow-actions"><input id="history-question" maxlength="4000" required placeholder="Which decisions are still open?" /><button id="submit-history-question" class="secondary">Ask matches</button></div>
-        <pre id="history-answer" class="reply" hidden></pre>
-      </form>
+      <div class="history-browser">
+        <form id="history-search-form" class="history-searchbar">
+          <button class="history-back" type="button" data-page="meeting" aria-label="Back to meeting">←</button>
+          <label class="sr-only" for="meeting-search">Ask or search saved meetings</label><input id="meeting-search" type="search" maxlength="300" autocomplete="off" placeholder="Ask or search anything" />
+          <button id="history-open-result" type="submit" class="history-search-icon" aria-label="Open first matching meeting" disabled>⌕</button>
+        </form>
+        <button id="history-ask-query" class="history-ask-query" type="button" hidden><span aria-hidden="true">✧</span><strong id="history-ask-query-label"></strong><kbd>Ask AI</kbd></button>
+        <p id="history-scope" class="history-scope" hidden>Ask AI uses up to eight recent saved meetings. Search below filters titles, notes, and transcripts.</p>
+        <pre id="history-answer" class="reply history-answer" role="status" hidden></pre>
+        <div class="history-list-heading"><h1>Saved sessions</h1><button id="history-refresh" class="text-button" type="button" aria-label="Refresh saved sessions">↻</button></div>
+        <p id="history-results-status" class="history-scope" role="status" hidden></p>
+        <ul id="meeting-list" class="file-list" aria-label="Saved meetings"></ul>
+        <div class="history-browser-footer"><span>Saved on this Mac</span><button id="history-new-chat" class="text-button" type="button">New chat <kbd id="history-new-chat-shortcut"></kbd></button></div>
+      </div>
+      <details id="history-question-panel" class="history-question-panel"><summary>Ask a specific question or ask about a selected meeting</summary>
+        <form id="ask-history" class="settings-card">
+          <label for="history-question">Your question</label>
+          <div class="workflow-actions"><input id="history-question" maxlength="4000" required placeholder="Which decisions are still open?" /><button id="submit-history-question" class="secondary">Ask matches</button></div>
+        </form>
+      </details>
       <form id="meeting-detail" class="settings-card" hidden>
         <label>Title<input id="meeting-title" maxlength="160" required /></label>
         <label>Notes<textarea id="meeting-notes" maxlength="120000" rows="9"></textarea></label>
@@ -82,6 +103,20 @@
         <h2>Transcript</h2><pre id="meeting-transcript" class="reply transcript-body"></pre>
       </form>
     </section>
+    <section id="page-modes" class="page" hidden>
+      <div class="page-heading"><div><h1>Modes</h1><p class="subtitle">Tailor your copilot with instructions and reference files. Preview a mode, then activate it when you’re ready.</p></div></div>
+      <div class="modes-layout"><aside class="mode-navigation"><button id="create-mode" class="text-button">＋ New mode</button><div id="mode-list" class="mode-list" aria-label="Mode templates"></div></aside><div class="mode-detail">        <form id="mode-editor" class="mode-editor" hidden>
+          <div class="mode-editor-heading"><h2 id="mode-preview-title">General</h2><span class="mode-tag">CUSTOM INSTRUCTIONS</span></div><p id="mode-description" class="mode-description"></p><p id="mode-editor-hint"></p>
+          <label>Mode name<input id="mode-name" maxlength="60" required /></label>
+          <label>Meeting context<textarea id="mode-instructions" maxlength="8000" rows="4"></textarea></label>
+          <fieldset id="mode-references"><legend>Files</legend><p class="mode-file-hint">PDF, Word, PowerPoint, text, Markdown, and code · Up to 20 MB each.</p><button id="mode-add-files" class="file-dropzone" type="button"><span aria-hidden="true">＋</span><strong>Add reference files</strong><small>Click to browse files for this mode.</small></button><p id="mode-import-status" class="mode-file-hint" role="status"></p>
+            <label class="inline-check"><input id="mode-all-references" type="checkbox" checked /> Use all documents in the context library</label>
+            <div id="mode-reference-options" hidden></div>
+          </fieldset>
+          <div class="workflow-actions"><button id="mode-use-template" class="primary" type="button" hidden>Use this mode</button><button class="secondary" type="submit">Save and activate</button><button id="cancel-mode" class="text-button" type="button">Cancel</button><button id="delete-mode" class="text-button" type="button" hidden>Delete mode</button></div>
+        </form>
+<div class="mode-active"><span id="mode-active-label">Using General</span><small>Active modes guide your conversations.</small></div></div></div>
+    </section>
     <section id="page-context" class="page" hidden>
       <div class="page-heading"><div><h1>Context library</h1><p class="subtitle">Give your copilot the bigger picture.</p></div><button id="add-context" class="primary">＋ Add files</button></div>
       <div class="banner context-banner"><span><strong>Your references, working together</strong><br>Ready documents and saved text provide background for live AI requests. Edit a custom mode to select which documents it uses.</span></div>
@@ -90,12 +125,13 @@
         <label for="context-text">Your notes<textarea id="context-text" rows="7" maxlength="120000" placeholder="What should your copilot know?" aria-describedby="context-text-hint"></textarea></label>
         <div class="context-text-footer"><small id="context-text-hint" role="status">Loading saved text…</small><button id="save-context-text" type="submit" class="primary" disabled>Save text</button></div>
       </form>
-      <div class="settings-heading"><h2>Documents</h2><p>PDF, DOCX, TXT, Markdown, CSV, and JSON · 20 MB per file · 120,000 characters across all context.<br>Readable text is saved locally at import. Remove and re-add a document to update it. Scanned PDFs require OCR.</p></div>
+      <div class="settings-heading"><h2>Documents</h2><p>PDF, DOCX, PowerPoint (.pptx), text, Markdown, CSV, JSON, and source code · 20 MB per file · 120,000 characters across all context.<br>Readable text is saved locally at import. Remove and re-add a document to update it. PowerPoint imports slide text in presentation order; images and speaker notes are excluded. Scanned PDFs require OCR.</p></div>
       <div id="context-empty" class="context-empty"><span class="document-symbol" aria-hidden="true">▤</span><h2>Add your reference documents</h2><p>Choose multiple files, including different formats, to use together.</p><button id="add-context-empty" class="secondary">Choose files</button><small>Removing a document leaves the original file intact.</small></div>
       <ul id="context-list" class="file-list" aria-label="Context files"></ul>
     </section>
     <section id="page-settings" class="page" hidden>
       <div class="page-heading"><div><h1>Settings</h1><p class="subtitle">Choose how your copilot listens and thinks.</p></div></div>
+      <article class="settings-card stealth-card"><div class="settings-heading"><h2>Stealth mode</h2><p>Hide the app from the Dock, Cmd+Tab, menu bar, and Mission Control. The floating overlay lets clicks pass through to your meeting, without taking focus. Use keyboard shortcuts to show, hide, move, scroll, and adjust it.</p></div><p class="stealth-warning">Screen-share protection is best effort. On macOS, full-screen sharing in Meet, Slack, or Teams may still show the overlay. Share a specific app window and verify the viewer’s screen before relying on it.</p><div class="context-text-footer"><small id="stealth-hint">Press Option+Shift+S to restore the app. Restarting also restores normal mode.</small><button id="screen-share-protection" class="secondary" data-action="screen-share-protection" aria-pressed="false">Screen-share protection</button><button id="enter-stealth" class="secondary" data-action="stealth">Enter stealth mode <kbd id="stealth-shortcut">⌥ ⇧ S</kbd></button></div></article>
       <form id="settings-form">
         <div class="settings-card"><div class="settings-heading"><h2>AI agent</h2><p>The service that generates your answers and meeting notes.</p></div>
           <div class="form-grid"><label>Provider<select name="AGENT_PROVIDER"><option value="openai">OpenAI</option><option value="cursor">Cursor</option></select></label><label>Model<select name="AGENT_MODEL" required aria-describedby="model-hint"><option value="gpt-4.1-mini">GPT-4.1 mini (Default)</option></select><small id="model-hint">Model choices update for your selected provider. Availability depends on your account.</small></label></div>
@@ -131,7 +167,9 @@
       </form>
     </section>
   </main>
+  </div>
   <script src="app.js"></script>
+  <script src="permissions.js"></script>
   <script src="workflows.js"></script>
 </body>
 </html>

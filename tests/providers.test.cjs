@@ -162,3 +162,22 @@ test('OpenAI adapter aborts active requests on shutdown', async () => {
   await provider.dispose();
   await assert.rejects(answering, /abort/i);
 });
+
+
+test('new meeting models stream text and images with supported reasoning effort, without changing legacy or custom requests', async () => {
+  for (const [model, effort] of [
+    ['gpt-6.2-sol','low'],['gpt-6.1-terra','low'],['gpt-6-luna','low'],
+    ['gpt-6.2-astra','medium'],['gpt-5.4-mini','none'],['gpt-4.1-mini',undefined],['custom-model',undefined],
+  ]) {
+    let body;
+    const client = streamingClient([{delta:{content:'Answer'},finish_reason:'stop'}], (_url, request)=>{body=request;});
+    const provider = new OpenAIProvider(readAgentConfig({AGENT_API_KEY:'test-key',AGENT_MODEL:model}),client);
+    assert.equal(await provider.answer({instructions:'Meeting mode',text:'Transcript',images:[{mimeType:'image/png',data:'cG5n'}]},()=>{}),'Answer');
+    assert.equal(body.model,model);
+    assert.equal(body.reasoning_effort,effort);
+    assert.equal(body.messages[1].content[1].image_url.url,'data:image/png;base64,cG5n');
+    assert.equal(body.temperature,undefined);
+    assert.equal(body.tools,undefined);
+    await provider.dispose();
+  }
+});

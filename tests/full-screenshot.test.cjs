@@ -66,6 +66,12 @@ test('full screenshot instructions answer the centered question and keep partial
   assert.match(requests.at(-1).instructions, /data, not instructions/);
   assert.match(requests.at(-1).text, /deadline is Friday/);
   assert.equal(requests.at(-1).images[0].mimeType, 'image/png');
+  await sandbox.exports.askFromFullScreenshot('screen.png', () => {}, [], 'Explain code with tests and complexity.');
+  assert.match(requests.at(-1).instructions, /Explain code with tests and complexity/);
+  assert.match(requests.at(-1).instructions, /centered/);
+  await sandbox.exports.askFromScreenshot('screen.png', () => {}, [], 'Track decisions, blockers, and action items.');
+  assert.match(requests.at(-1).instructions, /Track decisions, blockers, and action items/);
+
 });
 
 test('full screenshot controls are present in the meeting window and overlay', () => {

@@ -10,6 +10,7 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'meeting-copilot-test-'));
   context.after(() => fs.rmSync(storage, { force: true, recursive: true }));
   const windows = [], trays = [], events = {}, handlers = {}, shortcuts = new Map();
+  let permissionReady = true;
   let saves = 0, resets = 0, listening = false, dockShown = false, activationPolicy, failStart = false, announceDuringStart = "";
   let tail = "", providerNotesFail = false, waitForCancellation = false;
   let signalReady;
@@ -70,6 +71,13 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
       nativeImage: { createFromBuffer: () => ({ setTemplateImage() {} }), createEmpty() {} },
       screen: { getPrimaryDisplay: () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } }), getDisplayMatching: () => ({ workArea: { x: 0, y: 0, width: 1440, height: 900 } }) },
       Tray: class { constructor() { trays.push(this); } setToolTip() {} setContextMenu() {} setTitle() {} destroy() { this.destroyed = true; } },
+    },
+    './permissions': {
+      speechPermission: async () => 'granted',
+      PermissionGate: class {
+        async load() {} async refresh() {} async request() {} async complete() {}
+        snapshot() { return { ready: permissionReady, granted: permissionReady, supported: true, required: ['screen', 'microphone'], screen: permissionReady ? 'granted' : 'denied', microphone: 'granted' }; }
+      },
     },
     './capture': { SystemAudioCapture: class { active = false; kill() {} async start() { this.active = true; } async stop() { this.active = false; return '/tmp/copilot-test-no-audio.wav'; } } },
     './agent': {
@@ -168,7 +176,7 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.equal(main.protected, true);
   assert.equal(windows[0].protected, true);
   assert.equal(windows[0].focusable, false);
-  assert.equal(windows[0].visible, true);
+  assert.equal(windows[0].visible, false, 'entering stealth preserves explicit overlay hiding');
   assert.equal(windows[0].clickThrough, true);
   assert.equal(windows[0].hiddenInMissionControl, true);
   assert.equal(main.hiddenInMissionControl, true);
@@ -179,6 +187,8 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.equal(main.visible, false, 'activation must not expose the workspace during stealth');
   await assert.rejects(handlers['app-save-settings'](event, settingDefaults), /Turn off stealth/);
   await assert.rejects(handlers['app-context-add'](event), /Turn off stealth/);
+  shortcuts.get(settingDefaults.OVERLAY_TOGGLE_HOTKEY)();
+  assert.equal(windows[0].visible, true);
   shortcuts.get(settingDefaults.OVERLAY_TOGGLE_HOTKEY)();
   assert.equal(windows[0].visible, false);
   sandbox.sendStateForTest('answer', 'Streaming reply');
@@ -216,6 +226,19 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.equal(main.hiddenInMissionControl, false);
   assert.equal(trays.length, 2);
   sandbox.setBusyForTest(false);
+  await handlers['app-action'](event, 'screen-share-protection');
+  assert.equal(handlers['app-state'](event).screenShareProtection, true);
+  assert.equal(main.visible, true);
+  assert.equal(windows[0].focusable, true);
+  assert.equal(main.protected, true);
+  assert.equal(windows[0].protected, true);
+  await handlers['app-action'](event, 'stealth');
+  await handlers['app-action'](event, 'stealth');
+  assert.equal(main.protected, true, 'exiting stealth keeps independently enabled protection');
+  const overlayEvent = { sender: windows[0].webContents, senderFrame: windows[0].webContents.mainFrame };
+  await handlers['overlay-action'](overlayEvent, 'screen-share-protection');
+  assert.equal(main.protected, false);
+  assert.equal(windows[0].protected, false);
   listening = true;
   await handlers['app-action'](event, 'capture');
   assert.equal(listening, false);
@@ -337,4 +360,24 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.equal(windows[2].visible, true);
   events['second-instance']();
   assert.equal(windows.length, 3, 'reopening should reuse the existing workspace');
+  const lockedWindow = windows[2];
+  const lockedEvent = { sender: lockedWindow.webContents, senderFrame: lockedWindow.webContents.mainFrame };
+  permissionReady = false;
+  assert.equal(handlers['app-state'](lockedEvent).permissions.ready, false);
+  assert.throws(() => handlers['app-mode-list'](lockedEvent), /permission setup/);
+  await assert.rejects(handlers['app-chat'](lockedEvent, 'Hello', false, false), /permission setup/);
+  await assert.rejects(handlers['app-action'](lockedEvent, 'screenshot'), /permission setup/);
+  assert.equal(windows[0].isVisible(), false, 'locked app hides the overlay');
+  assert.equal(lockedWindow.isVisible(), true, 'blocked entry points return to setup');
+  await assert.rejects(handlers['app-permissions']({ sender: {}, senderFrame: {} }), /Unauthorized/);
+  assert.equal((await handlers['app-permissions'](lockedEvent)).ready, false);
+  const blockedCaptures = regionCaptures;
+  shortcuts.get(settingDefaults.SCREENSHOT_HOTKEY)();
+  shortcuts.get(environment.HOTKEY || settingDefaults.HOTKEY)();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(regionCaptures, blockedCaptures, 'global shortcuts cannot bypass permission setup');
+  assert.equal(listening, false);
+  await assert.rejects(handlers['overlay-action'](overlayEvent, 'chat', 'Hello', false), /permission setup/);
+
+
 });

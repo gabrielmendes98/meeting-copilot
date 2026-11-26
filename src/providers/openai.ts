@@ -2,6 +2,16 @@ import OpenAI from "openai";
 import type { AgentConfig } from "./config";
 import type { AgentProvider, AgentRequest, OnText } from "./types";
 
+// Official model guidance checked 2026-11-26. Keep effort explicit for live use;
+// GPT-6.2 rejects `none`, while GPT-5.4 mini supports it. Unknown/custom IDs retain API defaults.
+const reasoningEffort: Record<string, "none" | "low" | "medium"> = {
+  "gpt-6.2-sol": "low",
+  "gpt-6.1-terra": "low",
+  "gpt-6-luna": "low",
+  "gpt-6.2-astra": "medium",
+  "gpt-5.4-mini": "none",
+};
+
 export class OpenAIProvider implements AgentProvider {
   private readonly client: OpenAI;
   private readonly active = new Set<AbortController>();
@@ -33,6 +43,7 @@ export class OpenAIProvider implements AgentProvider {
       }
       const stream = await this.client.chat.completions.create({
         model: this.config.model,
+        ...(Object.hasOwn(reasoningEffort, this.config.model) ? { reasoning_effort: reasoningEffort[this.config.model] } : {}),
         messages: [
           { role: "system", content: request.instructions },
           { role: "user", content },

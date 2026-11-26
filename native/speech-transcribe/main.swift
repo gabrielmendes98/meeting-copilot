@@ -278,6 +278,29 @@ func transcribeWatchChunk(wav: URL) async {
     }
 }
 
+final class PermissionDelegate: NSObject, NSApplicationDelegate {
+    let request: Bool
+    let output: URL
+    init(request: Bool, output: URL) { self.request = request; self.output = output }
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        Task { @MainActor in
+            let authorization = request ? await requestAuth() : SFSpeechRecognizer.authorizationStatus()
+            let status: String
+            switch authorization {
+            case .authorized: status = "granted"
+            case .denied: status = "denied"
+            case .restricted: status = "restricted"
+            case .notDetermined: status = "not-determined"
+            @unknown default: status = "unknown"
+            }
+            if let data = try? JSONSerialization.data(withJSONObject: ["status": status]) {
+                try? data.write(to: output, options: .atomic)
+            }
+            NSApp.terminate(nil)
+        }
+    }
+}
+
 @main
 struct SpeechTranscribeMain {
     static func main() {
@@ -288,6 +311,15 @@ struct SpeechTranscribeMain {
         }
 
         let app = NSApplication.shared
+
+        if ["--permission-status", "--request-permission"].contains(args[1]) {
+            guard args.count == 3 else { exit(1) }
+            app.setActivationPolicy(.accessory)
+            let delegate = PermissionDelegate(request: args[1] == "--request-permission", output: URL(fileURLWithPath: args[2]))
+            app.delegate = delegate
+            withExtendedLifetime(delegate) { app.run() }
+            exit(0)
+        }
 
         if args[1] == "--watch" {
             app.setActivationPolicy(.accessory)

@@ -50,11 +50,12 @@ async function askFromImage(
   instructions: string,
   onText: (fullText: string) => void,
   referenceIds?: string[],
+  modeInstructions?: string,
 ): Promise<string> {
   const png = fs.readFileSync(pngPath);
   const context = await getAgentContext(referenceIds);
   return service.answer({
-    instructions: instructions + (context ? CONTEXT_RULES : ""),
+    instructions: [modeInstructions, instructions].filter(Boolean).join("\n\n") + (context ? CONTEXT_RULES : ""),
     text: context || undefined,
     images: [{ data: png.toString("base64"), mimeType: "image/png" }],
   }, onText);
@@ -64,16 +65,18 @@ export async function askFromScreenshot(
   pngPath: string,
   onText: (fullText: string) => void,
   referenceIds?: string[],
+  modeInstructions?: string,
 ): Promise<string> {
-  return askFromImage(pngPath, SCREENSHOT_PROMPT, onText, referenceIds);
+  return askFromImage(pngPath, SCREENSHOT_PROMPT, onText, referenceIds, modeInstructions);
 }
 
 export async function askFromFullScreenshot(
   pngPath: string,
   onText: (fullText: string) => void,
   referenceIds?: string[],
+  modeInstructions?: string,
 ): Promise<string> {
-  return askFromImage(pngPath, FULL_SCREENSHOT_PROMPT, onText, referenceIds);
+  return askFromImage(pngPath, FULL_SCREENSHOT_PROMPT, onText, referenceIds, modeInstructions);
 }
 
 export async function disposeAgent(): Promise<void> {

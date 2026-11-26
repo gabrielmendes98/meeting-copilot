@@ -23,24 +23,30 @@
         </div>
       </header>
       <div id="text" class="text markdown"></div>
-      <div id="overlay-toolbar" class="overlay-toolbar">
-        <button id="overlay-dashboard" type="button">Dashboard</button>
-        <button id="overlay-audio" type="button">Listen</button>
-        <button id="overlay-settings" type="button">Settings</button>
-        <button id="overlay-history" type="button">History</button>
-        <label>Mode <select id="overlay-mode"></select></label>
-        <button id="overlay-new-chat" type="button">New chat</button>
-        <button id="overlay-end" type="button" hidden>End session</button>
-        <button id="overlay-transcript-toggle" type="button" aria-pressed="false">Transcript</button>
-        <button id="overlay-hide" type="button">Hide</button>
-        <output id="overlay-clock" hidden></output>
-      </div>
-      <form id="overlay-ask" class="overlay-toolbar">
-        <input id="overlay-question" aria-label="Your question" maxlength="4000" placeholder="Ask about this session" />
-        <label><input id="overlay-include-screen" type="checkbox" /> Use screen context</label>
-        <button id="overlay-stop-chat" type="button" hidden>Stop response</button>
-        <button id="overlay-send" type="submit">Ask AI</button>
+      <form id="overlay-ask" class="overlay-composer">
+        <input id="overlay-question" aria-label="Your question" maxlength="4000" placeholder="Ask anything about your screen…" />
+        <button id="overlay-stop-chat" type="button" hidden>Stop</button>
+        <button id="overlay-send" type="submit" aria-label="Ask AI" title="Ask AI">↵</button>
       </form>
+      <div id="overlay-toolbar" class="overlay-toolbar">
+        <button id="overlay-settings" class="widget-brand" type="button" aria-label="Open Settings" title="Settings"><img src="../assets/app.png" alt="" width="28" height="28" /></button>
+        <div class="widget-controls">
+          <label class="screen-switch" title="Include your screen with questions"><input id="overlay-include-screen" type="checkbox" /> <span>▧ Screen</span></label>
+          <button id="overlay-screen-share-protection" type="button" aria-pressed="false" title="Best-effort protection for screen sharing">◉ Protect</button>
+          <label class="widget-mode"><span class="sr-only">Mode</span><select id="overlay-mode" aria-label="Mode"></select></label>
+          <button id="overlay-audio" type="button">Listen</button>
+        </div>
+        <output id="overlay-clock" hidden></output>
+        <button id="overlay-history" type="button">History</button>
+        <details id="overlay-more" class="widget-more"><summary aria-label="More widget controls">•••</summary><div>
+          <button id="overlay-dashboard" type="button">Open workspace</button>
+          <button id="overlay-modes" type="button">Modes &amp; files</button>
+          <button id="overlay-new-chat" type="button">New chat</button>
+          <button id="overlay-end" type="button" hidden>End session</button>
+          <button id="overlay-transcript-toggle" type="button" aria-pressed="false">Transcript</button>
+          <button id="overlay-hide" type="button">Hide widget</button>
+        </div></details>
+      </div>
       <div id="overlay-transcript" class="text transcript" hidden></div>
     </div>
     <script src="markdown.js"></script>
