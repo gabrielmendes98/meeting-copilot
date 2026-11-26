@@ -445,6 +445,7 @@ function registerApplicationIpc(): void {
     else if (action === "end") { if (listeningActive()) await stopListening(); else await endPausedSession(); }
     else if (action === "screenshot") await toggleScreenshot();
     else if (action === "full-screenshot") await toggleFullScreenshot();
+    else if (action === "improve-solution") await improveSolution();
     else throw new Error("Unknown action.");
     publishAppState();
   });
@@ -880,8 +881,16 @@ function cancelChat(): void {
   publishAppState();
 }
 
+async function improveSolution(): Promise<boolean> {
+  if (busy) return false;
+  if (!conversation.length) throw new Error("Ask for a solution first.");
+  return runChat("Improve the previous programming solution. Use the same problem, constraints and language. Explain the bottleneck, provide the improved complete code, compare time and auxiliary space complexity, and briefly check an edge case. If already optimal, explain why instead of inventing an improvement.", false, true);
+}
+
 async function runChat(question: string, useScreen: boolean, smart = false): Promise<boolean> {
+  if (busy) return false;
   await refreshPermissions();
+  if (busy) return false;
   if (!allowAppUse()) throw new Error("Complete macOS permission setup before asking AI.");
   assertAgentReady();
   let image: string | undefined;
@@ -946,6 +955,7 @@ async function runScreenshot(
     const activeMode = modes.active();
     const answer = await ask(pngPath, (full) => { sendState("answer", full); }, activeMode.referenceIds, activeMode.instructions);
     const text = answer || "The request wasn't clear.";
+    conversation = [...conversation.slice(-15), { question: "Solve the problem in my screenshot", answer: text }];
     sendState("answer", text);
     clipboard.writeText(text);
   } catch (err) {
@@ -1073,6 +1083,7 @@ if (!gotLock) {
       if (action === "screen-context") { setScreenContext(useScreen); return; }
       if (action === "new-chat") { clearChatContext(); return; }
       if (action === "stop-chat") { cancelChat(); return; }
+      if (action === "improve-solution") return improveSolution();
       if (action === "chat") return runChat(boundedText(question, 4_000, "Question", useScreen === true || sessionStartedAt !== null), useScreen === true);
       else if (action === "audio") { if (listeningActive()) await stopListening(true); else await toggleCapture(); }
       else if (action === "end") { if (listeningActive()) await stopListening(); else await endPausedSession(); }

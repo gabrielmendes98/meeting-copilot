@@ -154,6 +154,8 @@ function render(next) {
   $("reply").classList.toggle("empty", !text);
   $("reply-heading").textContent = isError ? "Something needs attention" : busy ? "Your copilot is working…" : "Your copilot’s response";
   $("copy-reply").disabled = !next.latestReply;
+  $("improve-solution").hidden = !/```/.test(next.latestReply || "");
+  $("improve-solution").disabled = busy || !next.conversation?.length;
   renderTranscript();
   $("save-settings").disabled = busy || listening || Boolean(next.sessionStartedAt) || saving;
   $("save-hint").textContent = listening ? "Stop listening before saving settings." : busy ? "Wait for the current action to finish." : "Changes apply immediately after saving.";

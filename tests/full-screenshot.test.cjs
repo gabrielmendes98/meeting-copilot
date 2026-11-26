@@ -71,6 +71,18 @@ test('full screenshot instructions answer the centered question and keep partial
   assert.match(requests.at(-1).instructions, /centered/);
   await sandbox.exports.askFromScreenshot('screen.png', () => {}, [], 'Track decisions, blockers, and action items.');
   assert.match(requests.at(-1).instructions, /Track decisions, blockers, and action items/);
+  for (const request of requests) {
+    assert.match(request.instructions, /complete, usable code/);
+    assert.match(request.instructions, /time complexity and auxiliary space complexity/);
+    assert.match(request.instructions, /do not provide the optimized implementation until the user asks/);
+    assert.match(request.instructions, /non-programming/i);
+  }
+  const longAnswer = 'x'.repeat(5000) + 'return result';
+  await sandbox.exports.askWithContext({question: 'Improve solution', history: [{question: 'Solve this', answer: longAnswer}]}, () => {});
+  assert.match(requests.at(-1).instructions, /complete, usable code/);
+  assert.equal(JSON.parse(requests.at(-1).text).conversation[0].answer, longAnswer);
+  await sandbox.exports.askWithContext({question: 'Summarize my meetings', archive: true}, () => {});
+  assert.doesNotMatch(requests.at(-1).instructions, /LeetCode/);
 
 });
 

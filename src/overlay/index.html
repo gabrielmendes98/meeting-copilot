@@ -19,10 +19,11 @@
           <span class="shortcut-item" title="Screenshot"><span>Screenshot</span><kbd id="shortcut-screenshot"></kbd></span>
           <span class="shortcut-item" title="Full screenshot"><span>Full screenshot</span><kbd id="shortcut-fullScreenshot"></kbd></span>
           <span class="shortcut-item" title="Show / hide overlay"><span>Show/hide</span><kbd id="shortcut-toggle"></kbd></span>
-          <span class="shortcut-item" id="stealth-control" title="Restore application from stealth"><span>Restore</span><kbd id="shortcut-stealth"></kbd></span>
+          <span class="shortcut-item" id="stealth-control" title="Enter stealth mode"><span id="stealth-shortcut-label">Stealth</span><kbd id="shortcut-stealth"></kbd></span>
         </div>
       </header>
       <div id="text" class="text markdown"></div>
+      <button id="overlay-improve-solution" type="button" hidden>Improve solution</button>
       <form id="overlay-ask" class="overlay-composer">
         <input id="overlay-question" aria-label="Your question" maxlength="4000" placeholder="Ask anything about your screen…" />
         <button id="overlay-stop-chat" type="button" hidden>Stop</button>

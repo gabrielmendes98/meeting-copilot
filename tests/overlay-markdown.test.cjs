@@ -54,7 +54,7 @@ test('keeps an unfinished fence readable while a reply is streaming', () => {
   assert.match(html, /<pre><code>const value = 1;<\/code><\/pre>/);
 });
 
-test('overlay paints markdown into the reply', () => {
+test('overlay paints markdown and offers improvement for code responses outside stealth', async () => {
   const elements = new Map();
   function element(id) {
     const el = {
@@ -62,16 +62,17 @@ test('overlay paints markdown into the reply', () => {
       style: { setProperty() {}, maxHeight: '' },
       scrollTop: 0, scrollHeight: 40, clientHeight: 40, scrollBy() {},
       parentElement: { title: 'Shortcut', setAttribute() {} },
-      setAttribute() {}, addEventListener() {},
+      setAttribute() {}, handlers: {}, addEventListener(name, fn) { this.handlers[name] = fn; },
       classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
     };
     elements.set(id, el);
     return el;
   }
   let handler;
+  const actions = [];
   vm.runInNewContext(`${fs.readFileSync('src/overlay/markdown.js', 'utf8')}\n${fs.readFileSync('src/overlay/overlay.js', 'utf8')}`, {
     window: {
-      copilot: { onState(fn) { handler = fn; }, onScroll() {}, onSession() {}, onAskShortcut() {}, onFocusComposer() {}, onNewChat() {}, resize() {} },
+      copilot: { async action(name) { actions.push(name); }, onState(fn) { handler = fn; }, onScroll() {}, onSession() {}, onAskShortcut() {}, onFocusComposer() {}, onNewChat() {}, resize() {} },
       addEventListener() {},
     },
     document: { getElementById: (id) => elements.get(id) || element(id) },
@@ -83,4 +84,14 @@ test('overlay paints markdown into the reply', () => {
   assert.match(html, /<strong>Ship<\/strong>/);
   assert.match(html, /&lt;b&gt;notes&lt;\/b&gt;/);
   assert.equal(elements.get('card').dataset.status, 'answer');
+  const improve = elements.get('overlay-improve-solution');
+  assert.equal(improve.hidden, true);
+  handler({ status: 'answer', text: '```python\nreturn -1\n```', stealth: false });
+  assert.equal(improve.hidden, false);
+  await improve.handlers.click();
+  assert.deepEqual(actions, ['improve-solution']);
+  handler({ status: 'answer', text: '```python\nreturn -1\n```', stealth: true });
+  assert.equal(improve.hidden, true);
+  handler({ status: 'thinking', text: 'Working…', stealth: false });
+  assert.equal(improve.hidden, true);
 });

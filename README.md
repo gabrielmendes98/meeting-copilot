@@ -111,14 +111,15 @@ Change, clear, or reset shortcuts in **Settings**. The stealth restore shortcut 
 
 Overlay movement uses 40-pixel steps and stays inside a display’s working area. Resizing for streamed replies preserves the panel’s position. Set **Settings → Overlay appearance → Default opacity (%)** to a whole percentage from 30 to 100 (default: 100). Saving applies it immediately and persists it for future launches; reset restores this saved default after temporary keyboard adjustments. You can also set `OVERLAY_OPACITY=100` in `.env` for the initial default. All overlay controls are configurable under **Settings → Overlay shortcuts** and work without focusing the panel.
 
-The opacity setting controls the background; text and header shortcut symbols use twice that opacity, capped at 100% (35% background → 70% text; 30% → 60%). The header displays Mac key symbols for recording, Ask AI, screenshots, show/hide, and—in stealth—restoring the app. Clicking the panel no longer dismisses it.
+The opacity setting controls the background; text and header shortcut symbols use twice that opacity, capped at 100% (35% background → 70% text; 30% → 60%). The header displays Mac key symbols for recording, Ask AI, screenshots, show/hide, and Stealth. The Stealth hint is visible in normal mode and changes to Restore while stealth is active; both use your configured stealth shortcut (Option+Shift+S by default). Clicking the panel no longer dismisses it.
 
 ## Screenshot questions
 
 1. `Option+Shift+Space` opens the macOS region selector (same gesture as Cmd+Shift+4). Esc cancels.
 2. After you capture an area, the overlay shows **Thinking**, then the reply.
-3. Multiple choice: the option plus a short justification. Open questions: 2–4 short sentences, in the language of the screenshot.
-4. The reply is copied to the clipboard so you can paste with Cmd+V.
+3. Multiple choice: the option plus a short justification. Non-programming open questions: 2–4 short sentences, in the language of the screenshot. Programming problems: a brief problem recap, a simple correct approach, complete code, time and auxiliary space complexity, and an edge-case check. The requested/editor language is used, with Python 3 as the fallback. Explicit performance constraints are respected.
+4. When a meaningful optimization exists, the first answer offers it without giving the optimized implementation immediately. **Improve solution** appears with code responses in the workspace and floating widget. It follows up using the saved conversation without capturing another screen. You can also type a follow-up. This applies in every mode, including Interview; choose Coding Interview for dedicated programming guidance.
+5. The reply is copied to the clipboard so you can paste with Cmd+V.
 
 The shortcut is configurable in `.env` (`SCREENSHOT_HOTKEY=Alt+Shift+Space`). It is ignored while the agent is busy (an action or screenshot in flight). You can still screenshot while macos listening is active.
 

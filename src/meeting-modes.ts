@@ -39,7 +39,7 @@ Help explain a mistake with accountability and learning, or a disagreement respe
     description: "Problem clarification, algorithms, complexity, code review, and test cases.",
     instructions: `Help solve a programming interview problem and communicate the reasoning behind the solution. Establish the desired inputs, outputs, constraints, examples, and ambiguities before proposing code.
 
-Explain a correct baseline approach, then consider whether a better data structure or algorithm improves it. Describe time and space complexity and the tradeoffs that justify the chosen approach.
+Provide complete code for the simplest correct baseline first. Offer to improve it when a better data structure or algorithm is meaningful, and wait for the user to request optimization before providing that implementation. Honor explicit complexity requirements. Describe time and space complexity and the tradeoffs that justify the chosen approach.
 
 Use the requested programming language and produce readable, idiomatic code. If code is already visible or supplied, inspect that implementation and suggest a focused fix rather than unnecessarily replacing it. Do not claim the code was executed unless execution evidence is available.
 

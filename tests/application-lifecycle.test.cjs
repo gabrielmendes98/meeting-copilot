@@ -336,6 +336,22 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.equal(windows[0].visible, true);
   assert.equal(copied, 'full answer');
   assert.equal(windows[0].messages.findLast(([channel]) => channel === 'overlay-state')[1].text, 'full answer');
+  assert.equal(handlers['app-state'](event).conversation.at(-1).answer, 'full answer');
+  await handlers['app-action'](event, 'improve-solution');
+  assert.match(requests.at(-1).question, /Improve the previous programming solution/);
+  assert.equal(requests.at(-1).history.at(-1).answer, 'full answer');
+  assert.equal(requests.at(-1).screenshot, undefined, 'improving uses saved context without taking another screenshot');
+  assert.equal(primaryCaptures, 1);
+  await handlers['overlay-action'](overlayEvent, 'improve-solution');
+  assert.equal(requests.at(-1).history.at(-1).answer, 'Final answer');
+  const requestCount = requests.length;
+  sandbox.setBusyForTest(true);
+  await handlers['overlay-action'](overlayEvent, 'improve-solution');
+  assert.equal(requests.length, requestCount, 'busy requests must not overwrite the active response');
+  sandbox.setBusyForTest(false);
+  handlers['app-chat-clear'](event);
+  await assert.rejects(handlers['app-action'](event, 'improve-solution'), /Ask for a solution first/);
+
   primaryError = new Error('Could not capture the primary display. Check Screen Recording permission.');
   await handlers['app-action'](event, 'full-screenshot');
   assert.equal(main.visible, true);

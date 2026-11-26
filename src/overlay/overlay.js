@@ -65,15 +65,19 @@ function render(state) {
   card.dataset.status = state.status;
   pill.textContent = state.label || labels[state.status] || state.status;
   showReply(state.text || "");
+  const stealthControl = element("stealth-control");
+  stealthControl.title = state.stealth ? "Exit stealth mode / restore application" : "Enter stealth mode";
+  stealthControl.hidden = !state.shortcuts?.stealth;
+  element("stealth-shortcut-label").textContent = state.stealth ? "Restore" : "Stealth";
   for (const [action, accelerator] of Object.entries(state.shortcuts || {})) {
     const key = document.getElementById(`shortcut-${action}`);
     if (key) { key.parentElement.hidden = !accelerator; key.textContent = macShortcut(accelerator); key.parentElement.setAttribute("aria-label", `${key.parentElement.title}: ${accelerator}`); }
   }
-  document.getElementById("stealth-control").hidden = !state.stealth;
   stealthActive = Boolean(state.stealth);
   element("overlay-toolbar").hidden = stealthActive;
   element("overlay-ask").hidden = stealthActive;
   element("overlay-transcript").hidden = stealthActive || !transcriptVisible;
+  element("overlay-improve-solution").hidden = stealthActive || state.status !== "answer" || !/```/.test(state.text || "");
   card.classList.toggle("click-through", stealthActive);
   fitWindow();
 }
@@ -110,7 +114,7 @@ window.copilot.onSession((next) => {
   element("overlay-audio").textContent = next.listening ? "Pause audio" : next.startedAt ? "Resume audio" : "Listen";
   element("overlay-end").hidden = !next.startedAt;
   element("overlay-stop-chat").hidden = !next.chatActive;
-  for (const id of ["overlay-audio", "overlay-end", "overlay-send", "overlay-new-chat"]) element(id).disabled = Boolean(next.busy);
+  for (const id of ["overlay-audio", "overlay-end", "overlay-send", "overlay-new-chat", "overlay-improve-solution"]) element(id).disabled = Boolean(next.busy);
   const transcript = element("overlay-transcript");
   const nearBottom = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 32;
   transcript.textContent = next.transcript || "Recognized speech will appear here.";
@@ -124,7 +128,7 @@ async function overlayAction(action, question, screen) {
   catch (error) { showReply(error.message); fitWindow(); return false; }
 }
 
-for (const action of ["dashboard", "audio", "end", "settings", "modes", "history", "new-chat", "screen-share-protection"]) {
+for (const action of ["improve-solution", "dashboard", "audio", "end", "settings", "modes", "history", "new-chat", "screen-share-protection"]) {
   element(`overlay-${action}`).addEventListener("click", () => void overlayAction(action));
 }
 element("overlay-stop-chat").addEventListener("click", () => void overlayAction("stop-chat"));
