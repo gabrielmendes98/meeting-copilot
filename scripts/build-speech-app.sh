@@ -16,5 +16,5 @@ swiftc -parse-as-library -O \
   -framework Foundation \
   -framework Speech
 if command -v codesign >/dev/null 2>&1; then
-  codesign --force --sign - "$app" >/dev/null 2>&1 || true
+  codesign --force --sign "${MEETING_COPILOT_SPEECH_SIGNING_IDENTITY:--}" "$app"
 fi

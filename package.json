@@ -15,7 +15,8 @@
     "start": "npm run build && node scripts/run-app.cjs",
     "dev": "tsc && npm run copy:static && node scripts/run-app.cjs",
     "prepare:app": "node scripts/run-app.cjs --prepare",
-    "package:mac": "npm run build && electron-builder --mac dir -c.directories.output=release -c.mac.identity=- -c.mac.hardenedRuntime=false -c.electronDist=node_modules/electron/dist"
+    "package:mac": "node scripts/package-mac.cjs",
+    "package:mac:local": "node scripts/package-mac.cjs --temporary-signing"
   },
   "engines": {
     "node": ">=20.16.0 <21 || >=22.3.0"
