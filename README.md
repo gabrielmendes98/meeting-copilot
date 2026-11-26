@@ -189,3 +189,19 @@ The built-in Modes catalogue contains **General, Interview, Behavioral Interview
 Model choices were reviewed against [OpenAI's current model-selection guidance](https://developers.openai.com/api/docs/guides/model-selection) on 2026-11-26. GPT-6.2 Sol is the suggested starting point for general meeting assistance; GPT-6.1 Terra is a candidate for screenshot-heavy use, GPT-6 Luna for bounded low-cost questions, and GPT-6.2 Astra for demanding analysis. GPT-5.4 mini remains an efficient coding/vision option. Actual suitability and time to first response should be evaluated on your meetings; adding an option does not establish measured latency or access through your API account.
 
 For these newly listed IDs, the OpenAI adapter sends explicit reasoning effort: `low` for Sol, Terra, and Luna; `medium` for Astra; `none` for GPT-5.4 mini. GPT-6.2 does not accept `none`. All these choices support streamed text and image input through the existing Chat Completions path; tools remain disabled. Existing models and custom IDs retain their prior request behavior. Your saved model and the default (`gpt-4.1-mini`) are preserved; select and save a newer option to switch. Speech transcription remains separately configured.
+
+
+## Install as a normal local macOS app
+
+Build a standalone app for the Mac you are using:
+
+```bash
+npm ci
+npm run package:mac
+```
+
+On Apple Silicon the result is `release/mac-arm64/Meeting Copilot.app` (on an Intel Mac, `release/mac/Meeting Copilot.app`). Quit the development instance, drag the built app into Applications using Finder, and open it normally. The package includes Electron, the compiled application, its M icon, production dependencies, and the native audio/speech helpers. Running it does not require a terminal or a separate Node installation.
+
+The `package:mac` command uses the installed Electron runtime and an ad-hoc signature for personal use on the build Mac, with hardened runtime disabled for that local signing configuration. It does not require an Apple Developer subscription. This script is for local installation; distributing to other Macs requires a separate Developer ID signing/notarization configuration.
+
+The packaged app has the production bundle identifier `dev.gabrielocc.meeting-copilot`, distinct from the development runtime's `.dev` identifier. Approve any permissions requested by the packaged app. Configure API keys in its Settings if needed; `.env` is not embedded in the app. Re-run `npm run package:mac` after source changes and replace the installed app while it is closed.

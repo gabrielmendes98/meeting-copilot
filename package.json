@@ -14,7 +14,8 @@
     "build": "tsc && npm run copy:static && npm run build:native",
     "start": "npm run build && node scripts/run-app.cjs",
     "dev": "tsc && npm run copy:static && node scripts/run-app.cjs",
-    "prepare:app": "node scripts/run-app.cjs --prepare"
+    "prepare:app": "node scripts/run-app.cjs --prepare",
+    "package:mac": "npm run build && electron-builder --mac dir -c.directories.output=release -c.mac.identity=- -c.mac.hardenedRuntime=false -c.electronDist=node_modules/electron/dist"
   },
   "engines": {
     "node": ">=20.16.0 <21 || >=22.3.0"
@@ -56,7 +57,6 @@
   "dependencies": {
     "@cursor/sdk": "^1.0.18",
     "dotenv": "^17.4.2",
-    "electron": "^41.7.1",
     "@xmldom/xmldom": "^0.9.12",
     "jszip": "^3.10.2",
     "openai": "^6.49.0",
@@ -65,7 +65,8 @@
   "devDependencies": {
     "@types/node": "^26.2.0",
     "electron-builder": "^26.15.3",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "electron": "^41.7.1"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
   "productName": "Meeting Copilot"
