@@ -3,10 +3,10 @@ const assert = require('node:assert/strict');
 const { isInterviewPrompt, QuietTurn } = require('../dist/auto-answer');
 
 test('recognizes questions and interview instructions, waits through incomplete prompts', () => {
-  for (const text of ['Walk me through a production incident.', 'Como você testaria isso?', 'Why this database']) {
+  for (const text of ['Walk me through a production incident.', 'Como você testaria isso?', 'Why this database', 'Great, how would you scale that?', 'Why?', 'Right join or left join?']) {
     assert.equal(isInterviewPrompt(text), true, text);
   }
-  for (const text of ['', 'Thanks for joining.', 'How would you handle it if', 'Tell me about the…']) {
+  for (const text of ['', 'Thanks for joining.', 'Mm-hmm; Right?; Great; Ooh?', 'Right?', 'Uh huh?', 'Entendi, certo?', 'How would you handle it if', 'Tell me about the…']) {
     assert.equal(isInterviewPrompt(text), false, text);
   }
 });

@@ -1,4 +1,6 @@
 import OpenAI from "openai";
+import type { Stream } from "openai/streaming";
+import type { ResponseInputContent, ResponseStreamEvent } from "openai/resources/responses/responses";
 import type { AgentConfig } from "./config";
 import type { AgentProvider, AgentRequest, OnText } from "./types";
 
@@ -36,6 +38,9 @@ export class OpenAIProvider implements AgentProvider {
     request.signal?.addEventListener("abort", cancel, { once: true });
     this.active.add(controller);
     try {
+      if (this.config.serviceTier === "ultrafast") {
+        return await this.answerUltrafast(request, onText, controller.signal);
+      }
       const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
       if (request.text) content.push({ type: "text", text: request.text });
       for (const image of request.images ?? []) {
@@ -43,6 +48,7 @@ export class OpenAIProvider implements AgentProvider {
       }
       const stream = await this.client.chat.completions.create({
         model: this.config.model,
+        ...(this.config.serviceTier === "priority" ? { service_tier: "priority" } : {}),
         ...(Object.hasOwn(reasoningEffort, this.config.model) ? { reasoning_effort: reasoningEffort[this.config.model] } : {}),
         messages: [
           { role: "system", content: request.instructions },
@@ -72,6 +78,53 @@ export class OpenAIProvider implements AgentProvider {
       controller.abort();
       this.active.delete(controller);
     }
+  }
+
+  private async answerUltrafast(request: AgentRequest, onText: OnText, signal: AbortSignal): Promise<string> {
+    const content: ResponseInputContent[] = [];
+    if (request.text) content.push({ type: "input_text", text: request.text });
+    for (const image of request.images ?? []) {
+      content.push({ type: "input_image", image_url: `data:${image.mimeType};base64,${image.data}`, detail: "auto" });
+    }
+    // The Responses endpoint accepts ultrafast before the bundled SDK types do.
+    const stream = await this.client.post<Stream<ResponseStreamEvent>>("/responses", {
+      body: {
+        model: this.config.model,
+        service_tier: "ultrafast",
+        reasoning: { effort: reasoningEffort[this.config.model] },
+        instructions: request.instructions,
+        input: [{ role: "user", content }],
+        store: false,
+        stream: true,
+      },
+      stream: true,
+      signal,
+    });
+    let full = "";
+    for await (const event of stream) {
+      switch (event.type) {
+        case "response.output_text.delta":
+          full += event.delta;
+          onText(full);
+          break;
+        case "response.refusal.delta":
+        case "response.refusal.done":
+          throw new Error("The agent declined this request.");
+        case "response.incomplete":
+          throw new Error(event.response.incomplete_details?.reason === "content_filter"
+            ? "The agent response was blocked by the provider's content filter."
+            : "The Ultrafast response ended before completion.");
+        case "response.failed":
+          throw new Error(event.response.error?.message ?? "The Ultrafast response failed.");
+        case "error":
+          throw new Error(event.message);
+        case "response.completed":
+          if (!full.trim()) throw new Error("The agent returned an empty response. Check that the model supports this request.");
+          return full.trim();
+      }
+    }
+    signal.throwIfAborted();
+    throw new Error("The Ultrafast response stream ended before completion.");
   }
 
   async dispose(): Promise<void> {

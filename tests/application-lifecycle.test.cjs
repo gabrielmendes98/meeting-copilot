@@ -315,8 +315,14 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   transcription.onActivity();
   await new Promise(resolve => setTimeout(resolve, 1300));
   assert.equal(requests.length, beforeAutoAnswer + 1, 'duplicate activity cannot repeat a reply');
-  environment.AUTO_ANSWER = 'off';
   const designQuestion = tail;
+  const visibleAnswer = handlers['app-state'](event).overlay;
+  tail += '\nMm-hmm. Great. Right?';
+  transcription.onActivity();
+  await new Promise(resolve => setTimeout(resolve, 1300));
+  assert.equal(requests.length, beforeAutoAnswer + 1);
+  assert.deepEqual(handlers['app-state'](event).overlay, visibleAnswer);
+  environment.AUTO_ANSWER = 'off';
   const followUp = 'What happens if that cache goes down?';
   tail += '\n' + followUp;
   await handlers['app-chat'](event, '', false, false);

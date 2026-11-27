@@ -5,6 +5,8 @@ const form = $("settings-form");
 const agentModels = {
   openai: [
     { id: "gpt-6.2-sol", name: "GPT-6.2 Sol · Recommended", hint: "A strong starting point for meeting help, follow-ups, and technical questions. Uses low reasoning effort for live assistance." },
+    { id: "gpt-6.2-sol-fast", name: "GPT-6.2 Sol · Fast", hint: "Uses the Fast processing tier with low reasoning effort and higher API pricing." },
+    { id: "gpt-6.2-sol-ultrafast", name: "GPT-6.2 Sol · Ultrafast", hint: "Uses the Ultrafast processing tier with low reasoning effort. Requires API project access and costs more." },
     { id: "gpt-6.1-terra", name: "GPT-6.1 Terra · Screenshots & visual reasoning", hint: "Designed for understanding screenshots, diagrams, and visual context. Uses low reasoning effort for live assistance." },
     { id: "gpt-6-luna", name: "GPT-6 Luna · Lower cost", hint: "Efficient for focused questions, short summaries, and routine meeting help. Uses low reasoning effort." },
     { id: "gpt-6.2-astra", name: "GPT-6.2 Astra · Complex questions", hint: "The most capable option for demanding reasoning and system design. Uses medium reasoning effort; expect higher cost and potentially longer waits." },

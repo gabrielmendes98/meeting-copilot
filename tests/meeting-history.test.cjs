@@ -90,6 +90,10 @@ test('the default mode catalogue matches all eleven Cluely templates and each se
   for (const mode of catalogue) {
     assert.ok(mode.description);
     assert.deepEqual(mode.referenceIds, [], 'templates do not inherit unrelated library files');
+    if (mode.group === 'Looking for work') {
+      assert.match(mode.instructions, /plausible, coherent example/);
+      assert.doesNotMatch(mode.instructions, /provide explicit placeholders|clearly marked details/);
+    }
     if (expectations[mode.id]) assert.match(mode.instructions, expectations[mode.id]);
     modes.choose(mode.id);
     const reopened = new MeetingModes(file); reopened.load();

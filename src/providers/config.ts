@@ -2,7 +2,7 @@ type Environment = Record<string, string | undefined>;
 
 export type AgentConfig =
   | { provider: "cursor"; apiKey: string; model: string }
-  | { provider: "openai"; apiKey: string; model: string };
+  | { provider: "openai"; apiKey: string; model: string; serviceTier?: "priority" | "ultrafast" };
 
 export function readAgentConfig(env: Environment = process.env): AgentConfig {
   const provider = env.AGENT_PROVIDER?.trim().toLowerCase() || "openai";
@@ -16,6 +16,14 @@ export function readAgentConfig(env: Environment = process.env): AgentConfig {
     };
   }
   if (provider === "openai") {
+    if (model === "gpt-6.2-sol-fast" || model === "gpt-6.2-sol-ultrafast") {
+      return {
+        provider,
+        apiKey,
+        model: "gpt-6.2-sol",
+        serviceTier: model === "gpt-6.2-sol-fast" ? "priority" : "ultrafast",
+      };
+    }
     return {
       provider,
       apiKey,

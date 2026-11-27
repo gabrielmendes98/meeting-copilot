@@ -23,7 +23,7 @@ function fixture() {
 test('model choices include modern text-and-image options while preserving existing selections and provider-specific choices', () => {
   const f=fixture();
   f.populate('openai','gpt-4.1-mini');
-  for(const id of ['gpt-6.2-sol','gpt-6.1-terra','gpt-6-luna','gpt-6.2-astra','gpt-5.4-mini','gpt-4.1-mini']) {
+  for(const id of ['gpt-6.2-sol','gpt-6.2-sol-fast','gpt-6.2-sol-ultrafast','gpt-6.1-terra','gpt-6-luna','gpt-6.2-astra','gpt-5.4-mini','gpt-4.1-mini']) {
     assert.ok(f.fields.AGENT_MODEL.children.some(option=>option.value===id),id);
   }
   assert.equal(f.fields.AGENT_MODEL.value,'gpt-4.1-mini');
@@ -35,6 +35,9 @@ test('model choices include modern text-and-image options while preserving exist
   assert.equal(f.fields.AGENT_MODEL.children.some(option=>option.value==='gpt-6.2-sol'),false);
   f.fields.AGENT_PROVIDER.value='openai';f.fields.AGENT_PROVIDER.listeners.change();
   assert.equal(f.fields.AGENT_MODEL.value,'gpt-6.2-astra');
+  f.populate('openai','gpt-6.2-sol-ultrafast');
+  assert.equal(f.get('custom-model-field').hidden,true);
+  assert.equal(f.selected(),'gpt-6.2-sol-ultrafast');
   f.populate('openai','my-private-snapshot');
   assert.equal(f.get('custom-model-field').hidden,false);
   assert.equal(f.selected(),'my-private-snapshot');

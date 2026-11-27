@@ -181,3 +181,46 @@ test('new meeting models stream text and images with supported reasoning effort,
     await provider.dispose();
   }
 });
+
+test('Sol speed options send the real model ID and stream through their supported endpoints', async () => {
+  const fastClient = streamingClient([{ delta: { content: 'Fast answer' } }], (url, body) => {
+    assert.match(url, /\/chat\/completions$/);
+    assert.equal(body.model, 'gpt-6.2-sol');
+    assert.equal(body.service_tier, 'priority');
+    assert.equal(body.reasoning_effort, 'low');
+  });
+  const fast = new OpenAIProvider(readAgentConfig({ AGENT_MODEL: 'gpt-6.2-sol-fast' }), fastClient);
+  assert.equal(await fast.answer({ instructions: 'Answer', text: 'Question' }, () => {}), 'Fast answer');
+
+  const ultrafastClient = new OpenAI({ apiKey: 'test-key', baseURL: 'http://mock.invalid/v1',
+    fetch: async (url, init) => {
+      assert.match(String(url), /\/responses$/);
+      const body = JSON.parse(init.body);
+      assert.equal(body.model, 'gpt-6.2-sol');
+      assert.equal(body.service_tier, 'ultrafast');
+      assert.deepEqual(body.reasoning, { effort: 'low' });
+      assert.equal(body.instructions, 'Answer');
+      assert.equal(body.store, false);
+      assert.equal(body.stream, true);
+      assert.deepEqual(body.input[0].content, [
+        { type: 'input_text', text: 'Question' },
+        { type: 'input_image', image_url: 'data:image/png;base64,cG5n', detail: 'auto' },
+      ]);
+      const events = [
+        { type: 'response.output_text.delta', delta: 'Ultrafast' },
+        { type: 'response.output_text.delta', delta: ' answer' },
+        { type: 'response.completed', response: { service_tier: 'ultrafast' } },
+      ];
+      const stream = events.map(event => `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join('');
+      return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+    },
+    maxRetries: 0,
+  });
+  const ultrafast = new OpenAIProvider(readAgentConfig({ AGENT_MODEL: 'gpt-6.2-sol-ultrafast' }), ultrafastClient);
+  const updates = [];
+  const answer = await ultrafast.answer({
+    instructions: 'Answer', text: 'Question', images: [{ mimeType: 'image/png', data: 'cG5n' }],
+  }, text => updates.push(text));
+  assert.deepEqual(updates, ['Ultrafast', 'Ultrafast answer']);
+  assert.equal(answer, 'Ultrafast answer');
+});

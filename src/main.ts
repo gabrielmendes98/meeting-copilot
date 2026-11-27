@@ -1,4 +1,4 @@
-import { QuietTurn, isInterviewPrompt } from "./auto-answer";
+import { QuietTurn, isAcknowledgment, isInterviewPrompt } from "./auto-answer";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -97,6 +97,10 @@ async function answerAfterPause(current: () => boolean): Promise<void> {
     if (busy) { pendingQuietTurn = current; return; }
     updateTranscript(segment);
     const prompt = liveTranscript.slice(Math.max(answeredThrough, contextStartsAt)).trim();
+    if (isAcknowledgment(prompt)) {
+      answeredThrough = liveTranscript.length;
+      return;
+    }
     if (!isInterviewPrompt(prompt)) return;
     await runChat(prompt, false, false, current);
   } catch (error) {
