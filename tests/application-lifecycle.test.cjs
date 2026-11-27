@@ -102,6 +102,7 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
       loadSettings() {}, publicSettings: () => ({ values: { ...settingDefaults, ...environment } }),
       saveSettings: (input) => { saves++; Object.assign(environment, input); },
     },
+    './auto-answer': require('../dist/auto-answer'),
     './settings-config': require('../dist/settings-config'),
     './overlay-layout': require('../dist/overlay-layout'),
     './context-files': {}, './wav': { assertWavHasAudio() {} },
@@ -303,6 +304,25 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   assert.match(requests.at(-1).transcript, /Kept after stop/);
 
   await handlers['app-action'](event, 'capture');
+  environment.AUTO_ANSWER = 'on';
+  environment.AUDIO_SOURCE = 'system';
+  tail = 'Design a URL shortener. How would you scale redirects?';
+  const beforeAutoAnswer = requests.length;
+  transcription.onActivity();
+  await new Promise(resolve => setTimeout(resolve, 1300));
+  assert.equal(requests.length, beforeAutoAnswer + 1);
+  assert.equal(requests.at(-1).question, tail);
+  transcription.onActivity();
+  await new Promise(resolve => setTimeout(resolve, 1300));
+  assert.equal(requests.length, beforeAutoAnswer + 1, 'duplicate activity cannot repeat a reply');
+  environment.AUTO_ANSWER = 'off';
+  const designQuestion = tail;
+  const followUp = 'What happens if that cache goes down?';
+  tail += '\n' + followUp;
+  await handlers['app-chat'](event, '', false, false);
+  assert.equal(requests.at(-1).question, followUp);
+  assert.equal(requests.at(-1).history.at(-1).question, designQuestion);
+  assert.equal(handlers['app-state'](event).conversation.at(-1).question, followUp);
   tail = 'First segment, including the tail';
   await handlers['app-action'](event, 'pause');
   assert.equal(listening, false);
@@ -349,8 +369,32 @@ test('Dock lifecycle and settings IPC enforce trusted senders and roll back shor
   await handlers['overlay-action'](overlayEvent, 'improve-solution');
   assert.equal(requests.length, requestCount, 'busy requests must not overwrite the active response');
   sandbox.setBusyForTest(false);
+  await handlers['app-action'](event, 'stealth');
+  assert.equal(handlers['app-state'](event).stealth, true);
+  const capturesBeforeImprove = primaryCaptures;
+  const requestsBeforeImprove = requests.length;
+  shortcuts.get(settingDefaults.IMPROVE_SOLUTION_HOTKEY)();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests.length, requestsBeforeImprove + 1);
+  assert.match(requests.at(-1).question, /Improve the previous programming solution/);
+  assert.equal(requests.at(-1).history.at(-1).answer, 'Final answer');
+  assert.equal(primaryCaptures, capturesBeforeImprove);
+  assert.equal(handlers['app-state'](event).stealth, true);
+  assert.equal(main.visible, false, 'improvement hotkey must not restore the workspace');
+  assert.equal(windows[0].clickThrough, true);
+  assert.equal(handlers['app-state'](event).overlay.shortcuts.improve, 'Alt+Shift+I');
+  sandbox.setBusyForTest(true);
+  shortcuts.get(settingDefaults.IMPROVE_SOLUTION_HOTKEY)();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(requests.length, requestsBeforeImprove + 1);
+  sandbox.setBusyForTest(false);
+  await handlers['app-action'](event, 'stealth');
   handlers['app-chat-clear'](event);
   await assert.rejects(handlers['app-action'](event, 'improve-solution'), /Ask for a solution first/);
+  shortcuts.get(settingDefaults.IMPROVE_SOLUTION_HOTKEY)();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.match(handlers['app-state'](event).overlay.text, /Ask for a solution first/);
+
 
   primaryError = new Error('Could not capture the primary display. Check Screen Recording permission.');
   await handlers['app-action'](event, 'full-screenshot');

@@ -142,6 +142,7 @@
           <label>Speech provider<select name="STT_PROVIDER"><option value="macos">macOS · Local, continuous listening</option><option value="openai">OpenAI · Cloud</option><option value="groq">Groq · Cloud</option><option value="auto">Automatic · Based on available API key</option></select></label>
           <div class="form-grid">
             <label>Audio source<select name="AUDIO_SOURCE"><option value="system">System audio</option><option value="microphone">Microphone</option><option value="both">System audio and microphone</option></select></label>
+            <label>Auto-answer interview prompts<select name="AUTO_ANSWER"><option value="off">Off</option><option value="on">On · system audio only</option></select></label>
             <label>Meeting audio language<select name="MEETING_AUDIO_LANGUAGE" data-language></select></label>
             <label>AI output language<select name="OUTPUT_LANGUAGE" data-language></select></label>
           </div>
@@ -153,6 +154,7 @@
           <div class="shortcut-grid">
             <label>Start or end session<input name="HOTKEY" /></label>
             <label>Ask about your screen or audio<input name="SCREEN_ASSIST_HOTKEY" /></label>
+            <label>Improve solution (also in stealth)<input name="IMPROVE_SOLUTION_HOTKEY" /></label>
             <label>Start a new chat<input name="CLEAR_CHAT_HOTKEY" /></label>
             <label>Open settings<input name="SETTINGS_HOTKEY" /></label>
             <label>Region screenshot<input name="SCREENSHOT_HOTKEY" /></label>

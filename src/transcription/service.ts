@@ -9,6 +9,7 @@ export class TranscriptionService implements LiveTranscriptionSession {
   private live: LiveTranscriptionSession | null = null;
   private disposed = false;
   onUnexpectedExit: ((err: Error) => void) | null = null;
+  onActivity?: () => void;
   onTranscript: ((text: string) => void) | null = null;
 
   constructor(
@@ -56,6 +57,7 @@ export class TranscriptionService implements LiveTranscriptionSession {
     }
     this.live ??= provider.createLiveSession();
     this.live.onUnexpectedExit = (err) => this.onUnexpectedExit?.(err);
+    this.live.onActivity = () => this.onActivity?.();
     this.live.onTranscript = (text) => this.onTranscript?.(text);
     await this.live.start();
   }

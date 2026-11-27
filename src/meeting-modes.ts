@@ -6,6 +6,7 @@ export type MeetingMode = {
   id: string; title: string; instructions: string; referenceIds?: string[];
   description?: string; group?: string; icon?: string;
 };
+const spokenAnswer = `For live interview questions, output only the words the candidate can say aloud. Speak in first person, in short conversational paragraphs. Start with the answer. Skip evaluator commentary, headings, bullet points, repeated summaries and offers of more help. For a follow-up, answer the specific point in a few sentences. Use earlier choices and the candidate's actual statements to resolve references. If the interviewer changes a constraint, explain what you would change and why. Switch topics when the interviewer does. Honor explicit requests for code or a different format.`;
 const builtIn: MeetingMode[] = [
   {
     id: "general", title: "General", icon: "▤",
@@ -15,13 +16,13 @@ const builtIn: MeetingMode[] = [
   {
     id: "interview", title: "Interview", group: "Looking for work", icon: "◇",
     description: "Broad interview support for behavioral, technical, role-fit, and follow-up questions.",
-    instructions: `Support the candidate during a job interview. Identify the ability or experience the interviewer is evaluating, and help formulate a relevant answer that can be spoken naturally.
+    instructions: `Support the candidate during a job interview. Answer the interviewer directly.
 
 Ground personal claims in the candidate's resume, role description, preparation notes, and reference documents. Do not make up employment, qualifications, outcomes, numbers, or project experience. Where evidence is missing, offer a structure with clearly marked details for the candidate to supply.
 
 For experience questions, organize a concrete example around the situation, responsibility, personal actions, and outcome. For technical or domain questions, explain the main idea, practical choices, limitations, and tradeoffs at an appropriate depth.
 
-When a question is unclear, suggest a focused clarification. When the candidate is stuck, help state an assumption and work through a defensible next step. Offer relevant questions about team expectations, the work, and how success is measured. Favor short talking points over a rehearsed essay.`,
+When a question is unclear, suggest a focused clarification. When the candidate is stuck, help state an assumption and work through a defensible next step. For a design question, pick one concrete design, walk through the requested parts, and explain the main tradeoff.`,
   },
   {
     id: "behavioral-interview", title: "Behavioral Interview", group: "Looking for work", icon: "▱",
@@ -48,13 +49,13 @@ Check empty input, duplicates, ordering, boundaries, null values, integer overfl
   {
     id: "system-design", title: "System Design", group: "Looking for work", icon: "▧",
     description: "Requirements, architecture, capacity, reliability, and explicit design tradeoffs.",
-    instructions: `Guide a system design interview from requirements to a defensible architecture. Clarify user needs, request volume, data size, latency goals, availability, consistency, privacy, budget, and operational limits. State estimates and assumptions explicitly.
+    instructions: `Answer the design question at the depth requested. Use the following topics selectively. Clarify user needs, request volume, data size, latency goals, availability, consistency, privacy, budget, and operational limits. State estimates and assumptions explicitly.
 
 Outline the APIs, entities, storage, service boundaries, and request/data flows. Introduce caching, queues, streams, indexing, rate limiting, or other components only when the requirements justify them. Explain what each component is responsible for.
 
 Compare meaningful alternatives: relational and nonrelational storage, synchronous and asynchronous work, consistency choices, push and pull, and service decomposition. Discuss cache invalidation, hot keys or partitions, backpressure, concurrency, and evolving schemas when applicable.
 
-Follow up on bottlenecks, degraded dependencies, failure recovery, access control, observability, and deployment. Keep the proposal proportionate to an interview rather than assuming unlimited infrastructure. Close with the architecture's main tradeoffs, remaining risks, and the next improvement to investigate.`,
+Follow up on bottlenecks, degraded dependencies, failure recovery, access control, observability, and deployment. Keep the proposal proportionate to an interview rather than assuming unlimited infrastructure. Choose one practical starting design. Explain the tradeoff most relevant to this question.`,
   },
   {
     id: "case-interview", title: "Case Interview", group: "Looking for work", icon: "▥",
@@ -122,7 +123,7 @@ Produce concise notes that distinguish the lecturer's statements, examples, assu
 
 Answer the user's question directly and supply just enough background to make the answer understandable. Use an analogy or worked example when useful. Offer short practice questions, retrieval checks, study summaries, or memory cues tied to the actual topic instead of generic study advice.`,
   },
-].map(mode => ({ ...mode, referenceIds: [] }));
+].map(mode => ({ ...mode, instructions: mode.group === "Looking for work" ? mode.instructions + "\n\n" + spokenAnswer : mode.instructions, referenceIds: [] }));
 // Preserve existing selections without adding an extra template to a fresh installation.
 const legacyTechnical: MeetingMode = {
   id: "technical", title: "Technical", description: "Previously configured technical assistance.",

@@ -1,3 +1,4 @@
+import { QuietTurn, isInterviewPrompt } from "./auto-answer";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -74,6 +75,35 @@ let contextStartsAt = 0;
 let useScreenContext = false;
 let pendingWorkspacePage: "settings" | "history" | "modes" | null = null;
 
+const quietTurn = new QuietTurn(1200);
+let answeredThrough = 0;
+
+let pendingQuietTurn: (() => boolean) | undefined;
+
+function autoAnswerMode(): boolean {
+  const mode = modes.active();
+  return mode.group === "Looking for work" || !modes.list().modes.find(item => item.id === mode.id)?.builtIn;
+}
+
+async function answerAfterPause(current: () => boolean): Promise<void> {
+  if (!current() || !transcription.active || !allowAppUse() || sessionStartedAt === null || !autoAnswerMode()) return;
+  if (busy) {
+    pendingQuietTurn = current;
+    return;
+  }
+  try {
+    const segment = await transcription.flushAndTranscript();
+    if (!current() || !transcription.active || !autoAnswerMode()) return;
+    if (busy) { pendingQuietTurn = current; return; }
+    updateTranscript(segment);
+    const prompt = liveTranscript.slice(Math.max(answeredThrough, contextStartsAt)).trim();
+    if (!isInterviewPrompt(prompt)) return;
+    await runChat(prompt, false, false, current);
+  } catch (error) {
+    if (current()) sendState("error", error instanceof Error ? error.message : String(error));
+  }
+}
+
 function updateTranscript(segment: string): void {
   liveTranscript = [pausedTranscript, segment.trim()].filter(Boolean).join("\n\n");
   publishAppState();
@@ -116,7 +146,7 @@ function listeningActive(): boolean {
 }
 
 function overlayShortcuts(): NonNullable<OverlayState["shortcuts"]> {
-  return { record: shortcutValue("HOTKEY"), answer: shortcutValue("SCREEN_ASSIST_HOTKEY"), screenshot: shortcutValue("SCREENSHOT_HOTKEY"), fullScreenshot: shortcutValue("FULL_SCREENSHOT_HOTKEY"), toggle: shortcutValue("OVERLAY_TOGGLE_HOTKEY"), stealth: shortcutValue("STEALTH_HOTKEY") };
+  return { record: shortcutValue("HOTKEY"), answer: shortcutValue("SCREEN_ASSIST_HOTKEY"), improve: shortcutValue("IMPROVE_SOLUTION_HOTKEY"), screenshot: shortcutValue("SCREENSHOT_HOTKEY"), fullScreenshot: shortcutValue("FULL_SCREENSHOT_HOTKEY"), toggle: shortcutValue("OVERLAY_TOGGLE_HOTKEY"), stealth: shortcutValue("STEALTH_HOTKEY") };
 }
 
 function sendState(status: OverlayStatus, text = "", label?: string): void {
@@ -183,6 +213,11 @@ function appState() {
 
 function setBusy(value: boolean): void {
   busy = value;
+  if (!busy && pendingQuietTurn) {
+    const pending = pendingQuietTurn;
+    pendingQuietTurn = undefined;
+    void answerAfterPause(pending);
+  }
   publishAppState();
 }
 
@@ -334,6 +369,7 @@ const hotkeyHandlers: Record<typeof shortcutKeys[number], () => void> = {
   OVERLAY_OPACITY_UP_HOTKEY: () => changeOverlayOpacity(0.1),
   OVERLAY_RESET_HOTKEY: resetOverlayLayout,
   SCREEN_ASSIST_HOTKEY: askShortcut,
+  IMPROVE_SOLUTION_HOTKEY: () => { void improveSolution().catch(error => sendState("error", error instanceof Error ? error.message : String(error))); },
   CLEAR_CHAT_HOTKEY: () => { if (!busy) clearChatContext(); },
   SETTINGS_HOTKEY: () => openWorkspacePage("settings"),
 };
@@ -736,6 +772,7 @@ async function finishCapture(): Promise<void> {
 }
 
 async function stopListening(pause = false): Promise<void> {
+  quietTurn.cancel();
   if (busy) return;
   setBusy(true);
   try {
@@ -772,6 +809,8 @@ async function toggleLiveListening(): Promise<void> {
   if (busy) return;
 
   if (!transcription.active) {
+    quietTurn.cancel();
+    answeredThrough = sessionStartedAt === null ? 0 : pausedTranscript.length;
     const previousTranscript = liveTranscript;
     transcriptUpdatedDuringStart = false;
     watchingTranscriptStart = true;
@@ -849,6 +888,7 @@ function setScreenContext(enabled: unknown): void {
 }
 
 function clearChatContext(): void {
+  quietTurn.cancel();
   if (busy) throw new Error("Wait for the current action to finish.");
   conversation = [];
   contextStartsAt = liveTranscript.length;
@@ -887,10 +927,10 @@ async function improveSolution(): Promise<boolean> {
   return runChat("Improve the previous programming solution. Use the same problem, constraints and language. Explain the bottleneck, provide the improved complete code, compare time and auxiliary space complexity, and briefly check an edge case. If already optimal, explain why instead of inventing an improvement.", false, true);
 }
 
-async function runChat(question: string, useScreen: boolean, smart = false): Promise<boolean> {
+async function runChat(question: string, useScreen: boolean, smart = false, current?: () => boolean): Promise<boolean> {
   if (busy) return false;
   await refreshPermissions();
-  if (busy) return false;
+  if (busy || (current && !current())) return false;
   if (!allowAppUse()) throw new Error("Complete macOS permission setup before asking AI.");
   assertAgentReady();
   let image: string | undefined;
@@ -901,17 +941,21 @@ async function runChat(question: string, useScreen: boolean, smart = false): Pro
   try {
     if (useScreen) image = await withWindowsHidden(captureContextDisplay);
     controller.signal.throwIfAborted();
-    if (transcription.active) updateTranscript(await transcription.flushAndTranscript());
+    if (!current && transcription.active) updateTranscript(await transcription.flushAndTranscript());
+    const transcriptEnd = liveTranscript.length;
+    const spokenTurn = sessionStartedAt === null ? "" : liveTranscript.slice(Math.max(contextStartsAt, answeredThrough), transcriptEnd).trim().slice(-8000);
+    const currentQuestion = question || (!useScreen ? spokenTurn : "");
     controller.signal.throwIfAborted();
     sendState("thinking", "Thinking…", "Ask AI");
     const activeMode = modes.active();
     const answer = await askWithContext({
-      question, transcript: sessionStartedAt !== null ? liveTranscript.slice(contextStartsAt) : undefined,
+      question: currentQuestion, transcript: sessionStartedAt !== null ? liveTranscript.slice(contextStartsAt) : undefined,
       history: conversation, mode: activeMode.instructions, referenceIds: activeMode.referenceIds, screenshot: image, smart, signal: controller.signal,
     }, (full) => { if (!controller.signal.aborted) sendState("answer", full, "Ask AI"); });
     controller.signal.throwIfAborted();
     if (!answer) throw new Error("The provider did not return a response.");
-    conversation = [...conversation.slice(-15), { question: question || (useScreen ? "Ask about my screen" : "Ask about this session"), answer }];
+    answeredThrough = transcriptEnd;
+    conversation = [...conversation.slice(-15), { question: currentQuestion || (useScreen ? "Ask about my screen" : "Ask about this session"), answer }];
     sendState("answer", answer, "Ask AI");
     return true;
   } catch (error) {
@@ -1057,7 +1101,12 @@ if (!gotLock) {
     ]));
     openApplication();
     createTray();
+    transcription.onActivity = () => {
+      if (process.env.AUTO_ANSWER === "on" && (process.env.AUDIO_SOURCE || "system") === "system")
+        quietTurn.activity((current) => { void answerAfterPause(current); });
+    };
     transcription.onUnexpectedExit = (err) => {
+      quietTurn.cancel();
       pausedTranscript = liveTranscript;
       refreshTray();
       sendState("error", err.message);

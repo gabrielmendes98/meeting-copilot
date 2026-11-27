@@ -57,6 +57,7 @@ export class RotatingLiveSession implements LiveTranscriptionSession {
   private speechJsonWaiter: JsonWaiter | null = null;
   private stopping = false;
   onUnexpectedExit: ((err: Error) => void) | null = null;
+  onActivity?: () => void;
   onTranscript: ((text: string) => void) | null = null;
 
   constructor(private readonly transcribe?: (file: string) => Promise<string>) {}
@@ -258,6 +259,7 @@ export class RotatingLiveSession implements LiveTranscriptionSession {
       this.recordingWaiter?.resolve();
       return;
     }
+    if (line === "ACTIVITY") { this.onActivity?.(); return; }
     if (line === "DONE") return;
     const match = /^(CHUNK|FLUSHED) (.+)$/.exec(line);
     if (!match) return;

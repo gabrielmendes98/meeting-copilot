@@ -81,6 +81,8 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
     private let channels: Int = 2
     private let source: AudioSource
     private let onStreamError: () -> Void
+    private let monitorActivity = ProcessInfo.processInfo.environment["AUTO_ANSWER"] == "on"
+    private var lastActivity = -Double.infinity
     private var mixStart: Double = 0
     private var mixedSamples: [Int32] = []
     private var rotating = false
@@ -202,6 +204,24 @@ final class CaptureSession: NSObject, SCStreamOutput, SCStreamDelegate {
         lock.lock()
         defer { lock.unlock() }
         guard let fileHandle else { return }
+        if monitorActivity && rotating && source == .system {
+            let now = ProcessInfo.processInfo.systemUptime
+            if now - lastActivity >= 0.15 {
+                let audible = pcm.withUnsafeBytes { raw -> Bool in
+                    let samples = raw.bindMemory(to: Int16.self)
+                    var energy = 0.0
+                    for index in stride(from: 0, to: samples.count, by: 8) {
+                        let amplitude = Double(samples[index])
+                        energy += amplitude * amplitude
+                    }
+                    return energy > 180 * 180 * Double((samples.count + 7) / 8)
+                }
+                if audible {
+                    lastActivity = now
+                    writeStdout("ACTIVITY")
+                }
+            }
+        }
         if source == .both && rotating {
             mix(pcm, sampleBuffer: sampleBuffer, inputChannels: inputChannels, inputRate: inputRate)
         } else {

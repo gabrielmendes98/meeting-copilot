@@ -9,10 +9,12 @@ export let transcription = new TranscriptionService(createTranscriptionProvider)
 
 export async function resetTranscription(): Promise<void> {
   const onUnexpectedExit = transcription.onUnexpectedExit;
+  const onActivity = transcription.onActivity;
   const onTranscript = transcription.onTranscript;
   await transcription.dispose();
   transcription = new TranscriptionService(createTranscriptionProvider);
   transcription.onUnexpectedExit = onUnexpectedExit;
+  transcription.onActivity = onActivity;
   transcription.onTranscript = onTranscript;
 }
 

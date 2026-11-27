@@ -91,6 +91,8 @@ With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
    **Modes**, in the sidebar or the widget’s **••• → Modes & files** menu, provide built-in instructions for meetings, interviews, sales, lectures, and technical work. Select a built-in mode and click **Customize mode** to create an editable copy with its instructions already filled in. The split view shows templates on the left and meeting context plus reference files on the right. Use **Add reference files** to import documents directly while preserving your draft instructions; newly imported readable files are selected for that mode. Choose its reference documents, then **Save and activate**. Opening or cancelling the editor keeps the current mode active. New template copies start with no selected reference documents; existing custom modes retain their prior selection. The separate **Context library** remains available for shared notes and managing all imported documents. Custom modes can be edited or deleted; built-in templates stay available.
 
 2. `Cmd+Shift+Backslash` starts or ends listening. Use **Pause audio** during a session to pause capture without closing the session, and **Resume audio** to continue.
+   For hands-free interview replies, enable **Settings → Transcription → Auto-answer interview prompts**, select **System audio**, and start listening in an interview template or custom mode. After roughly 1.2 seconds of quiet, the app checks the transcribed prompt and streams an answer using the active mode and its references. Transcription and model response time add to that delay.
+
 3. Type a message and press `Cmd+Enter` to ask AI. Use **Use screen context** to include the current display. During a session you can submit without typing to ask about the latest context.
 4. Ending a session with a transcript saves it under **History** and requests meeting notes from the configured AI provider.
 
@@ -98,6 +100,7 @@ With `STT_PROVIDER=macos` (on-device SpeechAnalyzer):
 | --- | --- |
 | Show or hide overlay | `Cmd+Backslash` |
 | Ask about screen or audio | `Cmd+Enter` |
+| Improve previous solution (including in stealth) | `Option+Shift+I` |
 | New chat | `Cmd+R` |
 | Open Settings | `Cmd+Comma` |
 | Start or end session | `Cmd+Shift+Backslash` |
@@ -118,7 +121,7 @@ The opacity setting controls the background; text and header shortcut symbols us
 1. `Option+Shift+Space` opens the macOS region selector (same gesture as Cmd+Shift+4). Esc cancels.
 2. After you capture an area, the overlay shows **Thinking**, then the reply.
 3. Multiple choice: the option plus a short justification. Non-programming open questions: 2–4 short sentences, in the language of the screenshot. Programming problems: a brief problem recap, a simple correct approach, complete code, time and auxiliary space complexity, and an edge-case check. The requested/editor language is used, with Python 3 as the fallback. Explicit performance constraints are respected.
-4. When a meaningful optimization exists, the first answer offers it without giving the optimized implementation immediately. **Improve solution** appears with code responses in the workspace and floating widget. It follows up using the saved conversation without capturing another screen. You can also type a follow-up. This applies in every mode, including Interview; choose Coding Interview for dedicated programming guidance.
+4. When a meaningful optimization exists, the first answer offers it without giving the optimized implementation immediately. **Improve solution** appears with code responses in the workspace and floating widget. It follows up using the saved conversation without capturing another screen. Press **Option+Shift+I** to improve the previous solution without leaving stealth; configure or disable it under **Settings → Keyboard shortcuts → Improve solution**. It uses the saved problem and answer, takes no new screenshot, and waits for the current response to finish. You can also type a follow-up. This applies in every mode, including Interview; choose Coding Interview for dedicated programming guidance.
 5. The reply is copied to the clipboard so you can paste with Cmd+V.
 
 The shortcut is configurable in `.env` (`SCREENSHOT_HOTKEY=Alt+Shift+Space`). It is ignored while the agent is busy (an action or screenshot in flight). You can still screenshot while macos listening is active.

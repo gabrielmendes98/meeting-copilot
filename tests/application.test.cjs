@@ -16,6 +16,9 @@ test('settings reject unsupported providers and conflicting shortcut aliases', (
   assert.equal(optional.OVERLAY_TOGGLE_HOTKEY, '');
   assert.throws(() => validateSettings({ ...settingDefaults, STEALTH_HOTKEY: '' }), /Enter a value/);
   assert.equal(settingDefaults.FULL_SCREENSHOT_HOTKEY, 'Alt+Ctrl+Space');
+  assert.equal(settingDefaults.IMPROVE_SOLUTION_HOTKEY, 'Alt+Shift+I');
+  assert.equal(validateSettings({ ...settingDefaults, IMPROVE_SOLUTION_HOTKEY: '' }).IMPROVE_SOLUTION_HOTKEY, '');
+  assert.throws(() => validateSettings({ ...settingDefaults, IMPROVE_SOLUTION_HOTKEY: settingDefaults.STEALTH_HOTKEY }), /different shortcut/);
   assert.throws(() => validateSettings({ ...settingDefaults, FULL_SCREENSHOT_HOTKEY: settingDefaults.HOTKEY }), /different shortcut/);
   assert.throws(() => validateSettings({ ...settingDefaults, AGENT_MODEL: ' ' }), /Enter a value/);
   for (const value of ['29', '101', '50.5', 'NaN', 'Infinity']) {

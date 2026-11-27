@@ -12,7 +12,7 @@ export const settingDefaults = {
   AGENT_PROVIDER: "openai", AGENT_MODEL: "gpt-4.1-mini",
   OVERLAY_OPACITY: "100",
   MEETING_AUDIO_LANGUAGE: "en-US", OUTPUT_LANGUAGE: "en-US", AUDIO_SOURCE: "system",
-  OVERLAY_DISPLAY: "primary", AUTO_LAUNCH: "off",
+  AUTO_ANSWER: "off", OVERLAY_DISPLAY: "primary", AUTO_LAUNCH: "off",
   STT_PROVIDER: "auto", HOTKEY: "CommandOrControl+Shift+\\",
   SCREENSHOT_HOTKEY: "Alt+Shift+Space", FULL_SCREENSHOT_HOTKEY: "Alt+Ctrl+Space",
   STEALTH_HOTKEY: "Alt+Shift+S", OVERLAY_TOGGLE_HOTKEY: "CommandOrControl+\\",
@@ -21,10 +21,10 @@ export const settingDefaults = {
   OVERLAY_SCROLL_UP_HOTKEY: "CommandOrControl+Shift+Up", OVERLAY_SCROLL_DOWN_HOTKEY: "CommandOrControl+Shift+Down",
   OVERLAY_OPACITY_DOWN_HOTKEY: "Alt+Shift+-", OVERLAY_OPACITY_UP_HOTKEY: "Alt+Shift+=",
   OVERLAY_RESET_HOTKEY: "Alt+Shift+0", SCREEN_ASSIST_HOTKEY: "CommandOrControl+Enter",
-  CLEAR_CHAT_HOTKEY: "CommandOrControl+R", SETTINGS_HOTKEY: "CommandOrControl+,",
+  IMPROVE_SOLUTION_HOTKEY: "Alt+Shift+I", CLEAR_CHAT_HOTKEY: "CommandOrControl+R", SETTINGS_HOTKEY: "CommandOrControl+,",
 };
 export const secretKeys = ["AGENT_API_KEY", "STT_PROVIDER_API_KEY"] as const;
-export const shortcutKeys = ["HOTKEY", "SCREENSHOT_HOTKEY", "FULL_SCREENSHOT_HOTKEY", "STEALTH_HOTKEY", "OVERLAY_TOGGLE_HOTKEY", "OVERLAY_LEFT_HOTKEY", "OVERLAY_RIGHT_HOTKEY", "OVERLAY_UP_HOTKEY", "OVERLAY_DOWN_HOTKEY", "OVERLAY_SCROLL_UP_HOTKEY", "OVERLAY_SCROLL_DOWN_HOTKEY", "OVERLAY_OPACITY_DOWN_HOTKEY", "OVERLAY_OPACITY_UP_HOTKEY", "OVERLAY_RESET_HOTKEY", "SCREEN_ASSIST_HOTKEY", "CLEAR_CHAT_HOTKEY", "SETTINGS_HOTKEY"] as const;
+export const shortcutKeys = ["HOTKEY", "SCREENSHOT_HOTKEY", "FULL_SCREENSHOT_HOTKEY", "STEALTH_HOTKEY", "OVERLAY_TOGGLE_HOTKEY", "OVERLAY_LEFT_HOTKEY", "OVERLAY_RIGHT_HOTKEY", "OVERLAY_UP_HOTKEY", "OVERLAY_DOWN_HOTKEY", "OVERLAY_SCROLL_UP_HOTKEY", "OVERLAY_SCROLL_DOWN_HOTKEY", "OVERLAY_OPACITY_DOWN_HOTKEY", "OVERLAY_OPACITY_UP_HOTKEY", "OVERLAY_RESET_HOTKEY", "SCREEN_ASSIST_HOTKEY", "IMPROVE_SOLUTION_HOTKEY", "CLEAR_CHAT_HOTKEY", "SETTINGS_HOTKEY"] as const;
 const optionalShortcuts = new Set<string>(shortcutKeys.filter((key) => key !== "STEALTH_HOTKEY"));
 export const legacyShortcutDefaults: Partial<Record<typeof shortcutKeys[number], string>> = {
   HOTKEY: "Alt+Space", OVERLAY_TOGGLE_HOTKEY: "Alt+Shift+B",
@@ -67,6 +67,7 @@ export function validateSettings(input: unknown): SettingsInput {
   if (!["system", "microphone", "both"].includes(result.AUDIO_SOURCE)) throw new Error("Choose an audio source.");
   if (!/^(primary|cursor|[0-9]+)$/.test(result.OVERLAY_DISPLAY)) throw new Error("Choose a display.");
   if (!["on", "off"].includes(result.AUTO_LAUNCH)) throw new Error("Choose a login preference.");
+  if (!["on", "off"].includes(result.AUTO_ANSWER)) throw new Error("Choose an auto-answer preference.");
   const opacity = Number(result.OVERLAY_OPACITY);
   if (!Number.isInteger(opacity) || opacity < 30 || opacity > 100) throw new Error("Overlay opacity must be a whole percentage between 30 and 100.");
   result.OVERLAY_OPACITY = String(opacity);

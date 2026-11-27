@@ -4,6 +4,7 @@ export type SttProvider = "openai" | "groq" | "macos";
 export interface LiveTranscriptionSession {
   readonly active: boolean;
   onUnexpectedExit: ((err: Error) => void) | null;
+  onActivity?: () => void;
   onTranscript: ((text: string) => void) | null;
   start(): Promise<void>;
   flushAndTranscript(): Promise<string>;
